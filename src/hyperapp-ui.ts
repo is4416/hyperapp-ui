@@ -154,27 +154,6 @@ export const setLocalState = function <S> (
 	}
 }
 
-// ---------- ---------- ---------- ---------- ----------
-// deleteKeys
-// ---------- ---------- ---------- ---------- ----------
-/**
- * オブジェクトから複数キーを削除する
- * 
- * @param   {Record<string, any>} props - オブジェクト
- * @param   {string[]}            keys  - 削除するキー
- * @returns {Record<string, any>}
- */
-export const deleteKeys = (
-	props: { [key: string]: any},
-	...keys: string[]
-): { [key: string]: any } => {
-	const result = { ...props }
-
-	keys.forEach(key => delete result[key])
-
-	return result
-}
-
 // ========== ========== ========== ========== ==========
 // 表示制御
 // ========== ========== ========== ========== ==========
@@ -214,6 +193,8 @@ export const Route = function <S> (
 
 const REVERSE_PREFIX = "r_"
 
+/* 補助関数 */
+
 // ---------- ---------- ---------- ---------- ----------
 // concatAction
 // ---------- ---------- ---------- ---------- ----------
@@ -250,6 +231,29 @@ export const getClassList = (
 		? props.class.trim().split(" ").filter(Boolean)
 		: []
 }
+
+// ---------- ---------- ---------- ---------- ----------
+// deleteKeys
+// ---------- ---------- ---------- ---------- ----------
+/**
+ * props から不要なキーを削除する
+ * 
+ * @param   {Record<string, any>} props - オブジェクト
+ * @param   {string[]}            keys  - 削除するキー
+ * @returns {Record<string, any>}
+ */
+export const deleteKeys = (
+	props: { [key: string]: any},
+	...keys: string[]
+): { [key: string]: any } => {
+	const result = { ...props }
+
+	keys.forEach(key => delete result[key])
+
+	return result
+}
+
+/* コンポーネント */
 
 // ---------- ---------- ---------- ---------- ----------
 // SelectButton
