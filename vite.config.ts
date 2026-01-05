@@ -5,6 +5,7 @@ export default defineConfig ({
 		jsxFactory: "h"
 	},
 	build: {
-		minify: false
+		minify: false,
+		outDir: "docs"
 	}
 })
