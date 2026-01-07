@@ -22,17 +22,29 @@ main {
 
 	> *:first-child { flex-shrink: 0; }
 	> *:last-child  {
-		flex-grow: 1;
-		overflow : auto;
-		margin-bottom: 1rem;
+		flex-grow       : 1;
+		overflow        : auto;
+		margin-bottom   : 1rem;
 		background-color: #A0A0FF;
 
-		> h2 { margin-left: 1rem; }
+		> h2 {
+			margin-left: 1rem;
+		}
+
 		> h3 {
 			margin: 1rem 0 0 1rem;
 		}
 		> h3 + button {
 			margin-left: 2rem;
+		}
+		> h3 + input[type="text"] {
+			margin: 1rem 0 0 2rem;
+		}
+
+		label {
+			margin : 0.5rem;
+			padding: 0.5rem;
+			border : 1px gray solid;
 		}
 	}
 }
@@ -64,4 +76,37 @@ button.select {
 button.reverse {
 	border: 3px blue solid;
 	color : blue;
+}
+
+input[type="text"] {
+	padding: 0.5rem;
+}
+
+#timedText {
+	border: 1px red solid;
+}
+
+#msg {
+	width: 40rem;
+	border: 1px blue solid;
+}
+
+#parent {
+	overflow: scroll;
+	margin: 1rem 0 0 2rem;
+	width: 20rem;
+	height: 10rem;
+	border: 1px gray solid;
+	background-color: white;
+}
+
+#parent + div {
+	margin: 1rem 0 0 2rem;
+}
+
+#child {
+	width: 30rem;
+	height: 20rem;
+	border: 1px gray solid;
+	background-color: yellow;
 }

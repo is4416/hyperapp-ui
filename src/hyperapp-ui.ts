@@ -1,4 +1,4 @@
-import { VNode, Effect } from "hyperapp"
+import { VNode, Dispatch, Effect } from "hyperapp"
 import h from "hyperapp-jsx-pragma"
 
 // ========== ========== ========== ========== ==========
@@ -368,4 +368,225 @@ export const OptionButton = function <S> (
 		class  : classList.join(" "),
 		onclick: action
 	}, children)
+}
+
+// ========== ========== ========== ========== ==========
+// エフェクト
+// ========== ========== ========== ========== ==========
+
+// ---------- ---------- ---------- ---------- ----------
+// effect_setTimedValue
+// ---------- ---------- ---------- ---------- ----------
+/**
+ * ステートに存在時間制限付きの値を設定するエフェクト
+ *
+ * @template S
+ * @template T
+ * @param   {string[]} keyNames - 値までのパス
+ * @param   {string}   id       - ユニークID
+ * @param   {number}   timeout  - 存在可能時間（ms）
+ * @param   {T}        value    - 一時的に設定する値
+ * @param   {T | null} reset    - タイムアウト後に設定する値
+ * @returns {(dispatch: Dispatch<S>) => void}
+ */
+export const effect_setTimedValue = function <S, T> (
+	keyNames: string[],
+	id      : string,
+	timeout : number,
+	value   : T,
+	reset   : T | null = null
+): (dispatch: Dispatch<S>) => void {
+	const NO_TIMER = 0
+
+	return (dispatch: Dispatch<S>) => {
+		dispatch((state: S) => {
+			const { timerID } = getLocalState(state, id, { timerID: NO_TIMER })
+			if (timerID !== NO_TIMER) clearTimeout(timerID)
+			
+			return setLocalState(
+				setValue(state, keyNames, value),
+				id,
+				{
+					timerID: setTimeout(() => {
+						dispatch((state: S) => setLocalState(
+							setValue(state, keyNames, reset),
+							id,
+							{
+								timerID: NO_TIMER
+							}
+						))
+					}, Math.max(0, timeout))
+				}
+			)
+		})
+	}
+}
+
+// ---------- ---------- ---------- ---------- ----------
+// action_throwMessageTick
+// ---------- ---------- ---------- ---------- ----------
+
+const action_throwMessageTick = function <S> (
+	keyNames: string[],
+	id      : string,
+	text    : string,
+	interval: number,
+): (state: S) => S | [S, Effect<S>] {
+	const NO_TIMER = 0
+
+	return (state: S) => {
+		const local = getLocalState(state, id, {
+			timerID: NO_TIMER,
+			msg    : "",
+			index  : 0,
+			paused : false
+		})
+		if (local.timerID !== NO_TIMER) clearTimeout(local.timerID)
+		if (local.paused) return state
+
+		const index = text === local.msg ? local.index : 0
+
+		return [
+			setValue(state, keyNames, text.slice(0, index + 1)),
+			(dispatch: Dispatch<S>) => {
+				dispatch((state: S) => setLocalState(state, id, {
+					timerID: index + 1 < text.length
+						? setTimeout(() => {
+							dispatch(action_throwMessageTick(
+								keyNames,
+								id,
+								text,
+								interval
+							))
+						}, Math.max(0, interval))
+						: 0,
+					msg  : text,
+					index: index + 1
+				}))
+			}
+		]
+	}
+}
+
+// ---------- ---------- ---------- ---------- ----------
+// effect_throwMessage
+// ---------- ---------- ---------- ---------- ----------
+/**
+ * ステートに文字を一文字ずつ流し込むエフェクト
+ * 
+ * @template S
+ * @param   {string[]} keyNames - 値までのパス
+ * @param   {string}   id       - ユニークID
+ * @param   {string}   text     - 流し込む文字
+ * @param   {number}   interval - 次の文字を流し込むまでの間隔（ms）
+ * @returns {(dispatch: Dispatch<S>) => void}
+ */
+export const effect_throwMessage = function <S> (
+  keyNames: string[],
+  id      : string,
+  text    : string,
+  interval: number,
+): (dispatch: Dispatch<S>) => void {
+	return (dispatch: Dispatch<S>) => {
+		dispatch((state: S) => setLocalState(state, id, {
+			keyNames: keyNames,
+			msg     : "",
+			interval: interval,
+			index   : 0,
+			paused  : false
+		}))
+
+		dispatch(action_throwMessageTick(keyNames, id, text, interval))
+	}
+}
+
+// ---------- ---------- ---------- ---------- ----------
+// effect_pauseThrowMessage
+// ---------- ---------- ---------- ---------- ----------
+/**
+ * throwMessageを一時停止する
+ * 
+ * @template S
+ * @param   {string} id - ユニークID
+ * @returns {(dispatch: Dispatch<S>) => void}
+ */
+export const effect_pauseThrowMessage = function <S> (
+	id: string
+): (dispatch: Dispatch<S>) => void {
+	return (dispatch: Dispatch<S>) => {
+		dispatch((state: S) => setLocalState(state, id, { paused: true }))
+	}
+}
+
+// ---------- ---------- ---------- ---------- ----------
+// effect_resumeThrowMessage
+// ---------- ---------- ---------- ---------- ----------
+/**
+ * 一時停止したthrowMessageを再開する
+ * 
+ * @template S
+ * @param   {string} id - ユニークID
+ * @returns {(dispatch: Dispatch<S>) => void}
+ */
+export const effect_resumeThrowMessage = function <S> (
+	id: string
+): (dispatch: Dispatch<S>) => void {
+	return (dispatch: Dispatch<S>) => {
+		dispatch((state: S) => setLocalState(state, id, { paused: false }))
+
+		dispatch((state: S) => {
+			const { keyNames, msg, interval } = getLocalState(state, id, {
+				keyNames: [],
+				msg     : "",
+				interval: 0,
+				paused   : false
+			})
+
+			return action_throwMessageTick(keyNames, id, msg, interval)
+		})
+	}
+}
+
+// ========== ========== ========== ========== ==========
+// DOM / Event
+// ========== ========== ========== ========== ==========
+
+// ---------- ---------- ---------- ---------- ----------
+// interface ScrollMargin
+// ---------- ---------- ---------- ---------- ----------
+/**
+ * スクロールの余白
+ * 
+ * @type {Object} ScrollMargin
+ * @property {number} top    - 上までの余白
+ * @property {number} left   - 左までの余白
+ * @property {number} right  - 右までの余白
+ * @property {number} bottom - 下までの余白
+ */
+export interface ScrollMargin {
+	top   : number
+	left  : number
+	right : number
+	bottom: number
+}
+
+// ---------- ---------- ---------- ---------- ----------
+// getScrollMargin
+// ---------- ---------- ---------- ---------- ----------
+/**
+ * スクロールの余白を取得する
+ * 
+ * @param   {Event} e - イベント
+ * @returns {ScrollMargin}
+ */
+export const getScrollMargin = function (e: Event): ScrollMargin {
+	const el = e.currentTarget as HTMLElement
+	if (!el) return { top: 0, left: 0, right: 0, bottom: 0 }
+
+	return {
+		top   : el.scrollTop,
+		left  : el.scrollLeft,
+		right : el.scrollWidth - (el.clientWidth + el.scrollLeft),
+		bottom: el.scrollHeight - (el.clientHeight + el.scrollTop)
+	}
 }

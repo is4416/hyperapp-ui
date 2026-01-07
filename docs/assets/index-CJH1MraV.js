@@ -380,6 +380,26 @@ const setValue = function(state, keyNames, value) {
   }
   return result;
 };
+const createLocalKey = (id2) => `local_key_${id2}`;
+const getLocalState = function(state, id2, def) {
+  const localKey = createLocalKey(id2);
+  const obj = Object.prototype.hasOwnProperty.call(state, localKey) ? state[localKey] : {};
+  return {
+    ...def,
+    ...obj
+  };
+};
+const setLocalState = function(state, id2, value) {
+  const localKey = createLocalKey(id2);
+  const obj = Object.prototype.hasOwnProperty.call(state, localKey) ? state[localKey] : {};
+  return {
+    ...state,
+    [localKey]: {
+      ...obj,
+      ...value
+    }
+  };
+};
 const Route = function(props, children) {
   const { state, keyNames, match } = props;
   const selectedName = getValue(state, keyNames, "");
@@ -441,12 +461,125 @@ const OptionButton = function(props, children) {
     onclick: action
   }, children);
 };
+const effect_setTimedValue = function(keyNames, id2, timeout, value, reset = null) {
+  const NO_TIMER = 0;
+  return (dispatch) => {
+    dispatch((state) => {
+      const { timerID } = getLocalState(state, id2, { timerID: NO_TIMER });
+      if (timerID !== NO_TIMER) clearTimeout(timerID);
+      return setLocalState(
+        setValue(state, keyNames, value),
+        id2,
+        {
+          timerID: setTimeout(() => {
+            dispatch((state2) => setLocalState(
+              setValue(state2, keyNames, reset),
+              id2,
+              {
+                timerID: NO_TIMER
+              }
+            ));
+          }, Math.max(0, timeout))
+        }
+      );
+    });
+  };
+};
+const action_throwMessageTick = function(keyNames, id2, text2, interval) {
+  const NO_TIMER = 0;
+  return (state) => {
+    const local = getLocalState(state, id2, {
+      timerID: NO_TIMER,
+      msg: "",
+      index: 0,
+      paused: false
+    });
+    if (local.timerID !== NO_TIMER) clearTimeout(local.timerID);
+    if (local.paused) return state;
+    const index = text2 === local.msg ? local.index : 0;
+    return [
+      setValue(state, keyNames, text2.slice(0, index + 1)),
+      (dispatch) => {
+        dispatch((state2) => setLocalState(state2, id2, {
+          timerID: index + 1 < text2.length ? setTimeout(() => {
+            dispatch(action_throwMessageTick(
+              keyNames,
+              id2,
+              text2,
+              interval
+            ));
+          }, Math.max(0, interval)) : 0,
+          msg: text2,
+          index: index + 1
+        }));
+      }
+    ];
+  };
+};
+const effect_throwMessage = function(keyNames, id2, text2, interval) {
+  return (dispatch) => {
+    dispatch((state) => setLocalState(state, id2, {
+      keyNames,
+      msg: "",
+      interval,
+      index: 0,
+      paused: false
+    }));
+    dispatch(action_throwMessageTick(keyNames, id2, text2, interval));
+  };
+};
+const effect_pauseThrowMessage = function(id2) {
+  return (dispatch) => {
+    dispatch((state) => setLocalState(state, id2, { paused: true }));
+  };
+};
+const effect_resumeThrowMessage = function(id2) {
+  return (dispatch) => {
+    dispatch((state) => setLocalState(state, id2, { paused: false }));
+    dispatch((state) => {
+      const { keyNames, msg, interval } = getLocalState(state, id2, {
+        keyNames: [],
+        msg: "",
+        interval: 0,
+        paused: false
+      });
+      return action_throwMessageTick(keyNames, id2, msg, interval);
+    });
+  };
+};
+const getScrollMargin = function(e) {
+  const el = e.currentTarget;
+  if (!el) return { top: 0, left: 0, right: 0, bottom: 0 };
+  return {
+    top: el.scrollTop,
+    left: el.scrollLeft,
+    right: el.scrollWidth - (el.clientWidth + el.scrollLeft),
+    bottom: el.scrollHeight - (el.clientHeight + el.scrollTop)
+  };
+};
 const action_reset = (state) => ({
   selected: [],
   group0: "",
   group1: "",
-  group2: ""
+  group2: "",
+  timedText: "",
+  throwMsg: "",
+  node: null,
+  margin: { top: 0, left: 0, right: 0, bottom: 0 }
 });
+const action_effectButtonClick = (state) => {
+  const label = /* @__PURE__ */ h("label", null, "Label");
+  const text2 = Array.from({ length: 40 }).map((_, i) => i).join("");
+  return [
+    state,
+    effect_setTimedValue(["timedText"], "timedText", 2e3, "timedText", ""),
+    effect_setTimedValue(["node"], "label1", 2e3, label, null),
+    effect_throwMessage(["throwMsg"], "msg", text2, 50)
+  ];
+};
+const action_scroll = (state, e) => {
+  return setValue(state, ["margin"], getScrollMargin(e));
+};
 addEventListener("load", () => {
   app({
     node: document.getElementById("app"),
@@ -454,8 +587,35 @@ addEventListener("load", () => {
       selected: [],
       group0: "",
       group1: "",
-      group2: ""
+      group2: "",
+      timedText: "",
+      throwMsg: "",
+      node: null,
+      margin: { top: 0, left: 0, right: 0, bottom: 0 }
     },
-    view: (state) => /* @__PURE__ */ h("main", null, /* @__PURE__ */ h("div", null, /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group0"], id: "page1" }, "SelectButton"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group0"], id: "page2" }, "OptionButton"), /* @__PURE__ */ h("button", { type: "button", onclick: action_reset }, "reset")), /* @__PURE__ */ h("div", null, /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page1" }, /* @__PURE__ */ h("h2", null, "SelectButton example"), /* @__PURE__ */ h(SelectButton, { state, keyNames: ["selected"], id: "btn1" }, "select / none"), /* @__PURE__ */ h(SelectButton, { state, keyNames: ["selected"], id: "btn2", reverse: true }, "select / reverse / none")), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page2" }, /* @__PURE__ */ h("h2", null, "OptionButton example"), /* @__PURE__ */ h("h3", null, "select"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group1"], id: "g1_btn1" }, "group1_btn1"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group1"], id: "g1_btn2" }, "group1_btn2"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group1"], id: "g1_btn3" }, "group1_btn3"), /* @__PURE__ */ h("h3", null, "select / reverse"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group2"], id: "g2_btn1", reverse: true }, "group2_btn1"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group2"], id: "g2_btn2", reverse: true }, "group2_btn2"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group2"], id: "g2_btn3", reverse: true }, "group2_btn3"))))
+    view: (state) => /* @__PURE__ */ h("main", null, /* @__PURE__ */ h("div", null, /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group0"], id: "page1" }, "SelectButton"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group0"], id: "page2" }, "OptionButton"), /* @__PURE__ */ h(
+      OptionButton,
+      {
+        state,
+        keyNames: ["group0"],
+        id: "page3",
+        onclick: action_effectButtonClick
+      },
+      "Effect"
+    ), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group0"], id: "page4" }, "DOM / Event"), /* @__PURE__ */ h("button", { type: "button", onclick: action_reset }, "reset")), /* @__PURE__ */ h("div", null, /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page1" }, /* @__PURE__ */ h("h2", null, "SelectButton example"), /* @__PURE__ */ h(SelectButton, { state, keyNames: ["selected"], id: "btn1" }, "select / none"), /* @__PURE__ */ h(SelectButton, { state, keyNames: ["selected"], id: "btn2", reverse: true }, "select / reverse / none")), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page2" }, /* @__PURE__ */ h("h2", null, "OptionButton example"), /* @__PURE__ */ h("h3", null, "select"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group1"], id: "g1_btn1" }, "group1_btn1"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group1"], id: "g1_btn2" }, "group1_btn2"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group1"], id: "g1_btn3" }, "group1_btn3"), /* @__PURE__ */ h("h3", null, "select / reverse"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group2"], id: "g2_btn1", reverse: true }, "group2_btn1"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group2"], id: "g2_btn2", reverse: true }, "group2_btn2"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group2"], id: "g2_btn3", reverse: true }, "group2_btn3")), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page3" }, /* @__PURE__ */ h("h2", null, "Effect"), /* @__PURE__ */ h("h3", null, "effect_setTimedValue"), /* @__PURE__ */ h("input", { type: "text", id: "timedText", value: state.timedText }), state.node, /* @__PURE__ */ h("h3", null, "effect_throwMessage"), /* @__PURE__ */ h("input", { type: "text", id: "msg", value: state.throwMsg }), /* @__PURE__ */ h("div", null, /* @__PURE__ */ h(
+      "button",
+      {
+        type: "button",
+        onclick: (state2) => [state2, effect_pauseThrowMessage("msg")]
+      },
+      "pause"
+    ), /* @__PURE__ */ h(
+      "button",
+      {
+        type: "button",
+        onclick: (state2) => [state2, effect_resumeThrowMessage("msg")]
+      },
+      "resume"
+    ))), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page4" }, /* @__PURE__ */ h("h2", null, "DOM / Event"), /* @__PURE__ */ h("h3", null, "getScrollMargin"), /* @__PURE__ */ h("div", { id: "parent", onscroll: action_scroll }, /* @__PURE__ */ h("div", { id: "child" }, "スクロールしてください")), /* @__PURE__ */ h("div", null, JSON.stringify(state.margin)))))
   });
 });
