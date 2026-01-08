@@ -10,6 +10,31 @@ Reusable UI components and state management utilities for Hyperapp.
 
 JSX を使用する場合は `hyperapp-jsx-pragma` を前提としています。
 
+## Design / 設計方針
+
+This library defines a minimal convention　for reusable state handling in Hyperapp.
+
+hyperapp はステートをどのような形でも持てるため、コンポーネントを作成する場合、
+どのように目的のステートを参照・更新するかをあらかじめ決めておく必要があります。
+
+コンポーネントの仕様が特定のステート構造に依存すると、設計の自由度が下がり、コードはアプリごとの使い捨てになりがちです。
+そこで本ライブラリでは、コンポーネントに「目的の値がどこにあるか」だけを通知する設計を採用しました。
+
+この考え方に基づき、パスを指定して値を取得する getValue と、値を設定する setValue を用意しています。
+
+---
+
+また、hyperapp ではコンポーネント内にローカルステートを持つことができません。
+すべてをパブリックステートに求めると、UI 内部の一時的な状態まで使用者が管理することになり、負担が大きくなります。
+
+そこで、ユニーク ID をキーとしたステートツリーをルートに追加し、使用者に意識させないステートを扱えるようにしました。
+これを実現するために getLocalState と setLocalState を用意しています。
+
+---
+
+以上の 4 つの関数が、本ライブラリの要です。
+その他の関数は、これらの使用例や、補助的なユーティリティにすぎません。
+
 ---
 
 ## State Utilities / 状態操作
