@@ -84,9 +84,12 @@ addEventListener("load", () => {
 			margin   : { top: 0, left: 0, right: 0, bottom: 0 }
 		},
 		view: (state: State) => (<main>
+
+			{/* *** Tabs Header *** */}
 			<div>
 				<OptionButton state={state} keyNames={["group0"]} id="page1">SelectButton</OptionButton>
 				<OptionButton state={state} keyNames={["group0"]} id="page2">OptionButton</OptionButton>
+				<OptionButton state={state}	keyNames={["group0"]} id="page5">Graph</OptionButton>
 				<OptionButton
 					state    = { state }
 					keyNames = { ["group0"] }
@@ -97,14 +100,20 @@ addEventListener("load", () => {
 				<button type="button" onclick={action_reset}>reset</button>
 			</div>
 
+			{/* *** Tabs Body *** */}
 			<div>
+				{/* *** page1: SelectButton *** */}
 				<Route state={state} keyNames={["group0"]} match="page1">
 					<h2>SelectButton example</h2>
 
+					<h3>select / none</h3>
 					<SelectButton state={state} keyNames={["selected"]} id="btn1">select / none</SelectButton>
+
+					<h3>select / reverse / none</h3>
 					<SelectButton state={state} keyNames={["selected"]} id="btn2" reverse={true}>select / reverse / none</SelectButton>
 				</Route>
 
+				{/* *** page2: OptionButton *** */}
 				<Route state={state} keyNames={["group0"]} match="page2">
 					<h2>OptionButton example</h2>
 
@@ -119,8 +128,35 @@ addEventListener("load", () => {
 					<OptionButton state={state} keyNames={["group2"]} id="g2_btn3" reverse={true}>group2_btn3</OptionButton>
 				</Route>
 
+				{/* *** page5: Graph *** */}
+				<Route state={state} keyNames={["group0"]} match="page5">
+					<h2>Graph</h2>
+
+					<h3>Line Graph</h3>
+					<div style={{
+						position: "absolute",
+						margin  : "0.5rem 0 0 2rem",
+						width   : "20rem",
+						height  : "10rem",
+						border  : "1px gray solid",
+						backgroundColor: "white"
+					}}>
+						<svg
+							width  = "100%"
+							height = "100%"
+						>
+							<polyline
+								fill        = "none"
+								stroke      = "red"
+								points      = "0,0 100,100"
+							/>
+						</svg>
+					</div>
+				</Route>
+
+				{/* *** page3: Effect *** */}
 				<Route state={state} keyNames={["group0"]} match="page3">
-					<h2>Effect</h2>
+					<h2>Effect example</h2>
 
 					<h3>effect_setTimedValue</h3>
 					<input type="text" id="timedText" value={ state.timedText } />
@@ -140,8 +176,9 @@ addEventListener("load", () => {
 					</div>
 				</Route>
 
+				{/* *** page4: DOM / Event *** */}
 				<Route state={state} keyNames={["group0"]} match="page4">
-					<h2>DOM / Event</h2>
+					<h2>DOM / Event example</h2>
 
 					<h3>getScrollMargin</h3>
 					<div id="parent" onscroll={action_scroll}>

@@ -375,6 +375,58 @@ export const OptionButton = function <S> (
 // ========== ========== ========== ========== ==========
 
 // ---------- ---------- ---------- ---------- ----------
+// effect_initializeNodes
+// ---------- ---------- ---------- ---------- ----------
+
+/**
+ * 初期化対象ノード定義
+ *
+ * @template S
+ * @typedef {Object} InitializeNode
+ * 
+ * @property {string=} id       - 対象要素のID (id または selector が必要)
+ * @property {string=} selector - 対象要素のCSSセレクター (id または selector が必要)
+ * @property {(state: S, element: Element) => S | [S, Effect<S>]} event - 初期化イベント
+ */
+export type InitializeNode <S> = {
+	id: string
+	event: (state: S, element: Element) => S | [S, Effect<S>]
+} | {
+	selector: string
+	event: (state: S, element: Element) => S | [S, Effect<S>]
+}
+
+/**
+ * DOM生成後にノードを取得して初期化処理を実行するエフェクト
+ *
+ * @template S
+ * @param   {InitializeNode<S>[]} nodes - 初期化対象ノード定義配列
+ * @returns {(dispatch: Dispatch<S>) => void}
+ */
+export const effect_initializeNodes = function <S> (
+	nodes: InitializeNode<S>[]
+): (dispatch: Dispatch<S>) => void {
+	const done = new Set<string>()
+
+	return (dispatch: Dispatch<S>) => {
+		nodes.forEach(node => {
+			const key = "id" in node
+				? `id:${ node.id }`
+				: `selector:${ node.selector }`
+
+			if (done.has(key)) return
+			done.add(key)
+
+			const element = "id" in node
+				? document.getElementById(node.id)
+				: document.querySelector(node.selector)
+
+			if (element) dispatch([node.event, element])
+		})
+	}
+}
+
+// ---------- ---------- ---------- ---------- ----------
 // effect_setTimedValue
 // ---------- ---------- ---------- ---------- ----------
 /**
