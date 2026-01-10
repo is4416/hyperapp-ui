@@ -407,7 +407,13 @@ const Route = function(props, children) {
 };
 const REVERSE_PREFIX = "r_";
 const concatAction = function(action, newState, e) {
-  return action ? action(newState, e) : newState;
+  if (!action) return newState;
+  const effect = (dispatch) => {
+    requestAnimationFrame(() => {
+      dispatch((state) => action(state, e));
+    });
+  };
+  return [newState, effect];
 };
 const getClassList = (props) => {
   return props.class ? props.class.trim().split(" ").filter(Boolean) : [];
@@ -460,6 +466,17 @@ const OptionButton = function(props, children) {
     class: classList.join(" "),
     onclick: action
   }, children);
+};
+const effect_initializeNodes = function(nodes) {
+  const done = /* @__PURE__ */ new Set();
+  return (dispatch) => {
+    nodes.forEach((node) => {
+      if (done.has(node.id)) return;
+      done.add(node.id);
+      const element = document.getElementById(node.id);
+      if (element) dispatch([node.event, element]);
+    });
+  };
 };
 const effect_setTimedValue = function(keyNames, id2, timeout, value, reset = null) {
   const NO_TIMER = 0;
@@ -572,6 +589,16 @@ const action_effectButtonClick = (state) => {
   const text2 = Array.from({ length: 40 }).map((_, i) => i).join("");
   return [
     state,
+    effect_initializeNodes([
+      {
+        id: "initTest",
+        event: (state2, element) => {
+          const input = element;
+          input.value = `initTest: width = ${input.clientWidth}, height = ${input.clientHeight}`;
+          return state2;
+        }
+      }
+    ]),
     effect_setTimedValue(["timedText"], "timedText", 2e3, "timedText", ""),
     effect_setTimedValue(["node"], "label1", 2e3, label, null),
     effect_throwMessage(["throwMsg"], "msg", text2, 50)
@@ -581,18 +608,19 @@ const action_scroll = (state, e) => {
   return setValue(state, ["margin"], getScrollMargin(e));
 };
 addEventListener("load", () => {
+  const param = {
+    selected: [],
+    group0: "",
+    group1: "",
+    group2: "",
+    timedText: "",
+    throwMsg: "",
+    node: null,
+    margin: { top: 0, left: 0, right: 0, bottom: 0 }
+  };
   app({
     node: document.getElementById("app"),
-    init: {
-      selected: [],
-      group0: "",
-      group1: "",
-      group2: "",
-      timedText: "",
-      throwMsg: "",
-      node: null,
-      margin: { top: 0, left: 0, right: 0, bottom: 0 }
-    },
+    init: param,
     view: (state) => /* @__PURE__ */ h("main", null, /* @__PURE__ */ h("div", null, /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group0"], id: "page1" }, "SelectButton"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group0"], id: "page2" }, "OptionButton"), /* @__PURE__ */ h(
       OptionButton,
       {
@@ -602,7 +630,7 @@ addEventListener("load", () => {
         onclick: action_effectButtonClick
       },
       "Effect"
-    ), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group0"], id: "page4" }, "DOM / Event"), /* @__PURE__ */ h("button", { type: "button", onclick: action_reset }, "reset")), /* @__PURE__ */ h("div", null, /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page1" }, /* @__PURE__ */ h("h2", null, "SelectButton example"), /* @__PURE__ */ h(SelectButton, { state, keyNames: ["selected"], id: "btn1" }, "select / none"), /* @__PURE__ */ h(SelectButton, { state, keyNames: ["selected"], id: "btn2", reverse: true }, "select / reverse / none")), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page2" }, /* @__PURE__ */ h("h2", null, "OptionButton example"), /* @__PURE__ */ h("h3", null, "select"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group1"], id: "g1_btn1" }, "group1_btn1"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group1"], id: "g1_btn2" }, "group1_btn2"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group1"], id: "g1_btn3" }, "group1_btn3"), /* @__PURE__ */ h("h3", null, "select / reverse"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group2"], id: "g2_btn1", reverse: true }, "group2_btn1"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group2"], id: "g2_btn2", reverse: true }, "group2_btn2"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group2"], id: "g2_btn3", reverse: true }, "group2_btn3")), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page3" }, /* @__PURE__ */ h("h2", null, "Effect"), /* @__PURE__ */ h("h3", null, "effect_setTimedValue"), /* @__PURE__ */ h("input", { type: "text", id: "timedText", value: state.timedText }), state.node, /* @__PURE__ */ h("h3", null, "effect_throwMessage"), /* @__PURE__ */ h("input", { type: "text", id: "msg", value: state.throwMsg }), /* @__PURE__ */ h("div", null, /* @__PURE__ */ h(
+    ), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group0"], id: "page4" }, "DOM / Event"), /* @__PURE__ */ h("button", { type: "button", onclick: action_reset }, "reset")), /* @__PURE__ */ h("div", null, /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page1" }, /* @__PURE__ */ h("h2", null, "SelectButton example"), /* @__PURE__ */ h("h3", null, "select / none"), /* @__PURE__ */ h(SelectButton, { state, keyNames: ["selected"], id: "btn1" }, "select / none"), /* @__PURE__ */ h("h3", null, "select / reverse / none"), /* @__PURE__ */ h(SelectButton, { state, keyNames: ["selected"], id: "btn2", reverse: true }, "select / reverse / none")), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page2" }, /* @__PURE__ */ h("h2", null, "OptionButton example"), /* @__PURE__ */ h("h3", null, "select"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group1"], id: "g1_btn1" }, "group1_btn1"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group1"], id: "g1_btn2" }, "group1_btn2"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group1"], id: "g1_btn3" }, "group1_btn3"), /* @__PURE__ */ h("h3", null, "select / reverse"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group2"], id: "g2_btn1", reverse: true }, "group2_btn1"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group2"], id: "g2_btn2", reverse: true }, "group2_btn2"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group2"], id: "g2_btn3", reverse: true }, "group2_btn3")), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page3" }, /* @__PURE__ */ h("h2", null, "Effect example"), /* @__PURE__ */ h("h3", null, "effect_initializeNodes"), /* @__PURE__ */ h("input", { type: "text", id: "initTest" }), /* @__PURE__ */ h("h3", null, "effect_setTimedValue"), /* @__PURE__ */ h("input", { type: "text", id: "timedText", value: state.timedText }), state.node, /* @__PURE__ */ h("h3", null, "effect_throwMessage"), /* @__PURE__ */ h("input", { type: "text", id: "msg", value: state.throwMsg }), /* @__PURE__ */ h("div", null, /* @__PURE__ */ h(
       "button",
       {
         type: "button",
@@ -616,6 +644,6 @@ addEventListener("load", () => {
         onclick: (state2) => [state2, effect_resumeThrowMessage("msg")]
       },
       "resume"
-    ))), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page4" }, /* @__PURE__ */ h("h2", null, "DOM / Event"), /* @__PURE__ */ h("h3", null, "getScrollMargin"), /* @__PURE__ */ h("div", { id: "parent", onscroll: action_scroll }, /* @__PURE__ */ h("div", { id: "child" }, "スクロールしてください")), /* @__PURE__ */ h("div", null, JSON.stringify(state.margin)))))
+    ))), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page4" }, /* @__PURE__ */ h("h2", null, "DOM / Event example"), /* @__PURE__ */ h("h3", null, "getScrollMargin"), /* @__PURE__ */ h("div", { id: "parent", onscroll: action_scroll }, /* @__PURE__ */ h("div", { id: "child" }, "スクロールしてください")), /* @__PURE__ */ h("div", null, JSON.stringify(state.margin)))))
   });
 });

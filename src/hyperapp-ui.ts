@@ -200,6 +200,7 @@ const REVERSE_PREFIX = "r_"
 // ---------- ---------- ---------- ---------- ----------
 /**
  * アクションを結合して結果を返す
+ * 
  * @template S
  * @template E
  * @param   {undefined | (state: S, e: E) => S | [S, Effect<S>]} action   - 結合するアクション
@@ -212,7 +213,18 @@ export const concatAction = function <S, E> (
 	newState: S,
 	e       : E
 ): S | [S, Effect<S>] {
-	return action ? action(newState, e) : newState
+	if (!action) return newState
+
+	const effect = (dispatch: Dispatch<S>) => {
+
+		// 次の描画を待たないと、newStateと同時にdispatchが走ってしまい、DOMが存在しない可能性がある
+		// effect_initializeNodesを機能させるため、dispatch を描画後まで保留する
+		requestAnimationFrame(() => {
+			dispatch((state: S) => action(state, e))
+		})
+	}
+
+	return [newState, effect]
 }
 
 // ---------- ---------- ---------- ---------- ----------
@@ -379,22 +391,11 @@ export const OptionButton = function <S> (
 // ---------- ---------- ---------- ---------- ----------
 
 /**
- * 初期化対象ノード定義
- *
  * @template S
- * @typedef {Object} InitializeNode
- * 
- * @property {string=} id       - 対象要素のID (id または selector が必要)
- * @property {string=} selector - 対象要素のCSSセレクター (id または selector が必要)
- * @property {(state: S, element: Element) => S | [S, Effect<S>]} event - 初期化イベント
+ * @type {Object} InitializeNode
+ * @property {string} id - ユニークID
+ * @property {(state: S, element: Element) => S | [S, Effect<S>]}
  */
-export type InitializeNode <S> = {
-	id: string
-	event: (state: S, element: Element) => S | [S, Effect<S>]
-} | {
-	selector: string
-	event: (state: S, element: Element) => S | [S, Effect<S>]
-}
 
 /**
  * DOM生成後にノードを取得して初期化処理を実行するエフェクト
@@ -404,23 +405,19 @@ export type InitializeNode <S> = {
  * @returns {(dispatch: Dispatch<S>) => void}
  */
 export const effect_initializeNodes = function <S> (
-	nodes: InitializeNode<S>[]
+	nodes: {
+		id: string
+		event: (state: S, element: Element) => S | [S, Effect<S>]
+	}[]
 ): (dispatch: Dispatch<S>) => void {
 	const done = new Set<string>()
 
 	return (dispatch: Dispatch<S>) => {
 		nodes.forEach(node => {
-			const key = "id" in node
-				? `id:${ node.id }`
-				: `selector:${ node.selector }`
+			if (done.has(node.id)) return
+			done.add(node.id)
 
-			if (done.has(key)) return
-			done.add(key)
-
-			const element = "id" in node
-				? document.getElementById(node.id)
-				: document.querySelector(node.selector)
-
+			const element = document.getElementById(node.id)
 			if (element) dispatch([node.event, element])
 		})
 	}

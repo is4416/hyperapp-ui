@@ -6,10 +6,10 @@ import { app, VNode } from "hyperapp"
 import h from "hyperapp-jsx-pragma"
 
 import {
+	setValue,
 	Route, SelectButton, OptionButton,
-	effect_setTimedValue, effect_throwMessage, effect_pauseThrowMessage, effect_resumeThrowMessage,
-	ScrollMargin, getScrollMargin,
-	setValue
+	effect_initializeNodes, effect_setTimedValue, effect_throwMessage, effect_pauseThrowMessage, effect_resumeThrowMessage,
+	ScrollMargin, getScrollMargin
 } from "./hyperapp-ui"
 
 // ---------- ---------- ---------- ---------- ----------
@@ -52,6 +52,16 @@ const action_effectButtonClick = (state: State) => {
 
 	return [
 		state,
+		effect_initializeNodes([
+			{
+				id: "initTest",
+				event: (state: State, element: Element) => {
+					const input = element as HTMLInputElement
+					input.value = `initTest: width = ${ input.clientWidth }, height = ${ input.clientHeight }`
+					return state
+				}
+			}
+		]),
 		effect_setTimedValue(["timedText"], "timedText", 2000, "timedText", ""),
 		effect_setTimedValue(["node"], "label1", 2000, label, null),
 		effect_throwMessage(["throwMsg"], "msg", text, 50)
@@ -71,25 +81,30 @@ const action_scroll = (state: State, e: Event) => {
 // ---------- ---------- ---------- ---------- ----------
 
 addEventListener("load", () => {
+
+	// State
+	const param: State = {
+		selected : [],
+		group0   : "",
+		group1   : "",
+		group2   : "",
+		timedText: "",
+		throwMsg : "",
+		node     : null,
+		margin   : { top: 0, left: 0, right: 0, bottom: 0 }
+	}
+
+	// app
 	app({
 		node: document.getElementById("app") as HTMLElement,
-		init: {
-			selected : [],
-			group0   : "",
-			group1   : "",
-			group2   : "",
-			timedText: "",
-			throwMsg : "",
-			node     : null,
-			margin   : { top: 0, left: 0, right: 0, bottom: 0 }
-		},
+		init: param,
+
 		view: (state: State) => (<main>
 
 			{/* *** Tabs Header *** */}
 			<div>
 				<OptionButton state={state} keyNames={["group0"]} id="page1">SelectButton</OptionButton>
 				<OptionButton state={state} keyNames={["group0"]} id="page2">OptionButton</OptionButton>
-				<OptionButton state={state}	keyNames={["group0"]} id="page5">Graph</OptionButton>
 				<OptionButton
 					state    = { state }
 					keyNames = { ["group0"] }
@@ -128,35 +143,12 @@ addEventListener("load", () => {
 					<OptionButton state={state} keyNames={["group2"]} id="g2_btn3" reverse={true}>group2_btn3</OptionButton>
 				</Route>
 
-				{/* *** page5: Graph *** */}
-				<Route state={state} keyNames={["group0"]} match="page5">
-					<h2>Graph</h2>
-
-					<h3>Line Graph</h3>
-					<div style={{
-						position: "absolute",
-						margin  : "0.5rem 0 0 2rem",
-						width   : "20rem",
-						height  : "10rem",
-						border  : "1px gray solid",
-						backgroundColor: "white"
-					}}>
-						<svg
-							width  = "100%"
-							height = "100%"
-						>
-							<polyline
-								fill        = "none"
-								stroke      = "red"
-								points      = "0,0 100,100"
-							/>
-						</svg>
-					</div>
-				</Route>
-
 				{/* *** page3: Effect *** */}
 				<Route state={state} keyNames={["group0"]} match="page3">
 					<h2>Effect example</h2>
+
+					<h3>effect_initializeNodes</h3>
+					<input type="text" id="initTest" />
 
 					<h3>effect_setTimedValue</h3>
 					<input type="text" id="timedText" value={ state.timedText } />

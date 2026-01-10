@@ -16,23 +16,28 @@ This library defines a minimal convention for reusable state handling in Hyperap
 hyperapp はステートをどのような形でも持てるため、コンポーネントを作成する場合、  
 どのように目的のステートを参照・更新するかをあらかじめ決めておく必要があります。
 
-コンポーネントの仕様が特定のステート構造に依存すると、設計の自由度が下がり、コードはアプリごとの使い捨てになりがちです。  
-そこで本ライブラリでは、コンポーネントに「目的の値がどこにあるか」だけを通知する設計を採用しました。
-
-この考え方に基づき、パスを指定して値を取得する getValue と、値を設定する setValue を用意しています。
-
----
+コンポーネントの仕様が特定のステート構造に依存すると、設計の自由度が下がり、  
+コードはアプリごとの使い捨てになりがちです。  
+そこで本ライブラリでは、コンポーネントに「目的の値がどこにあるか」だけを通知する設計を採用しました。  
+この考え方に基づき、パスを指定して値を取得する `getValue` と、値を設定する `setValue` を用意しています。
 
 また、hyperapp ではコンポーネント内にローカルステートを持つことができません。  
-すべてをパブリックステートに求めると、UI 内部の一時的な状態まで使用者が管理することになり、負担が大きくなります。
-
-そこで、ユニーク ID をキーとしたステートツリーをルートに追加し、使用者に意識させないステートを扱えるようにしました。  
-これを実現するために getLocalState と setLocalState を用意しています。
-
----
+すべてをパブリックステートに求めると、UI 内部の一時的な状態まで使用者が管理することになり、負担が大きくなります。  
+そこで ID をキーとしたステートツリーをルートに追加し、使用者に意識しなくても良いように処理することとしました。  
+これを実現するために `getLocalState` と `setLocalState` を用意しています。
 
 以上の 4 つの関数が、本ライブラリの要です。  
-その他の関数は、これらの使用例や、補助的なユーティリティにすぎません。
+
+
+さらに、Hyperapp ではコンポーネント内で DOM に直接触れられないため、  
+VNode マウント後の初期化処理が必要な場合には `effect_initializeNodes` を利用する設計です。  
+これにより、サイズ取得や外部ライブラリ初期化などを安全に行えます。
+
+`concatAction` は、この仕組みを補助するもので、アクションを結合する際に利用することで、  
+汎用的なコンポーネント設計が可能になります。  
+
+
+その他の関数は、これらの使用例や、補助的なユーティリティなどとなります。  
 
 ---
 
@@ -127,6 +132,14 @@ Helpers and components for managing selection state via class names.
 アクションを結合して結果を返す  
 Combine an action with a new state and an optional event.
 
+- 新しい state を返すと同時に、オプションで既存のアクションも実行可能
+- DOM がまだ存在しない場合でも、安全に次の描画後に dispatch されるよう保留可能（requestAnimationFrame を利用）
+- effect_initializeNodes と組み合わせることで、VNode マウント後の初期化処理にも対応可能
+
+- Returns the new state while optionally executing an additional action
+- The dispatch can be deferred until after the next render to ensure the DOM exists (requestAnimationFrame is used)
+- Works seamlessly with effect_initializeNodes for post-mount initialization of VNodes
+
 #### getClassList
 
 オブジェクトから classList を取得する  
@@ -172,7 +185,7 @@ An effect that retrieves DOM nodes after render and runs initialization logic.
 
 #### Behavior
 
-- id または selector を指定して対象要素を取得します
+- id を指定して、対象要素を取得します
 - 対象ノードごとに 一度だけ 初期化イベントが実行されます  
 （同じキーは内部で重複実行防止されます）
 - VNode から直接 DOM に触れない Hyperapp の設計を補完します
@@ -197,6 +210,11 @@ effect_initializeNodes([
   }
 ])
 ```
+
+#### Note:
+This effect should be dispatched after the target nodes exist in the DOM.  
+It can be called from `app.init` or any point where nodes are rendered,  
+such as after a `Route` switch.
 
 ---
 
