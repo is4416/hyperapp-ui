@@ -9,6 +9,25 @@ Reusable UI components and state management utilities for Hyperapp.
 
 JSX を使用する場合は `hyperapp-jsx-pragma` を前提としています。
 
+## Functions / 関数リスト
+
+- [getValue](#getvalue)
+- [setValue](#setvalue)
+- [getLocalState](#getlocalstate)
+- [setLocalState](#setlocalstate)
+- [Route](#route)
+- [concatAction](#concataction)
+- [getClassList](#getclasslist)
+- [deleteKeys](#deletekeys)
+- [SelectButton](#selectbutton)
+- [OptionButton](#optionbutton)
+- [effect_initializeNodes](#effect_initializenodes)
+- [effect_setTimedValue](#effect_settimedvalue)
+- [effect_throwMessage](#effect_throwmessage)
+- [effect_pauseThrowMessage](#effect_pausethrowmessage)
+- [effect_resumeThrowMessage](#effect_resumethrowmessage)
+- [getScrollMargin](#getscrollmargin)
+
 ## Design / 設計方針
 
 This library defines a minimal convention for reusable state handling in Hyperapp.
@@ -39,8 +58,6 @@ VNode マウント後の初期化処理が必要な場合には `effect_initiali
 
 その他の関数は、これらの使用例や、補助的なユーティリティなどとなります。  
 
----
-
 ## source file / ソースファイル
 
 This library is implemented in a single file:  
@@ -57,6 +74,14 @@ Utilities for safely accessing and updating nested state structures.
 
 ### getValue
 
+```getValue
+function getValue <S, D> (
+  state   : S,        // ステート
+  keyNames: string[], // 値までのパス
+  def     : D         // デフォルト値
+): D
+```
+
 パスを辿って、ステートから値を取得する  
 Traverse a path in the state object and retrieve the value.
 
@@ -67,6 +92,14 @@ Traverse a path in the state object and retrieve the value.
 
 ### setValue
 
+```setValue
+function setValue <S> (
+  state   : S,        // ステート
+  keyNames: string[], // 値までのパス
+  value   : any       // 設定する値
+): S
+```
+
 パスを辿って、ステートに値を設定して返す  
 Traverse a path in the state object, set a value, and return the updated state.
 
@@ -75,21 +108,37 @@ Traverse a path in the state object, set a value, and return the updated state.
 
 ---
 
-### Local State Utilities
+### getLocalState
 
-#### getLocalState
+```getLocalState
+function getLocalState <S> (
+  state: S,                     // ステート
+  id   : string,                // ユニークID
+  def  : { [key: string]: any } // 初期値
+): { [key: string]: any }
+```
 
 ステートから、ID に紐づいたローカルステートを取得する  
 Retrieve a local state object associated with a given ID.
 
-#### setLocalState
+---
+
+### setLocalState
+
+```setLocalState
+function setLocalState <S> (
+  state: S,                     // ステート
+  id   : string,                // ユニークID
+  value: { [key: string]: any } // 設定するローカルステート
+): S
+```
 
 ローカルステートを更新してステートを返す  
 Update a local state object and return the updated state.
 
 ---
 
-### Local State Design
+#### Local State Design
 
 Local state is stored directly on the root state object using a generated key:
 
@@ -103,13 +152,22 @@ This design:
 - Keeps UI-specific state isolated by ID
 - Allows immediate access and cancellation (e.g. timers)
 
----
-
 ## Display Control / 表示制御
 
 Components for conditional rendering based on state values.
 
 ### Route
+
+```Route
+function <S> Route (
+  props: {
+    state   : S        // ステート
+    keyNames: string[] // ステート内の文字配列までのパス
+    match   : string   // 一致する文字
+  },
+  children: any        // 出力する内容 (VNode / 配列 / 文字など)
+): VNode<S> | null
+```
 
 ステート内の文字列と一致した場合に VNode を返す  
 Return a VNode when the state value at the given path matches a string.
@@ -119,15 +177,21 @@ Return a VNode when the state value at the given path matches a string.
 
 This allows safe conditional rendering without extra checks.
 
----
-
 ## Selection / 選択
 
 Helpers and components for managing selection state via class names.
 
-### Helper Functions / 補助関数
+#### Helper Functions / 補助関数
 
-#### concatAction
+### concatAction
+
+```concatAction
+function concatAction <S, E> (
+  action  : undefined | ((state: S, e: E) => S | [S, Effect<S>]), // 結合するアクション
+  newState: S,                                                    // 結合するステート
+  e       : E                                                     // イベント (任意のイベント型)
+): S | [S, Effect<S>]
+```
 
 アクションを結合して結果を返す  
 Combine an action with a new state and an optional event.
@@ -140,21 +204,51 @@ Combine an action with a new state and an optional event.
 - The dispatch can be deferred until after the next render to ensure the DOM exists (requestAnimationFrame is used)
 - Works seamlessly with effect_initializeNodes for post-mount initialization of VNodes
 
-#### getClassList
+---
+
+### getClassList
+
+```getClassList
+function getClassList (
+  props: { [key: string]: any } // オブジェクト
+): string[]
+```
 
 オブジェクトから classList を取得する  
 Extract a `classList` array from a props object.
 
-#### deleteKeys
+---
+
+### deleteKeys
+
+```deleteKeys
+function deleteKeys (
+  props  : { [key: string]: any}, // オブジェクト
+  ...keys: string[]               // 削除するキー
+): { [key: string]: any }
+```
 
 props から不要なキーを除去する  
 Remove specified keys from a props object.
 
 ---
 
-### Components / コンポーネント
+#### Components / コンポーネント
 
-#### SelectButton
+### SelectButton
+
+```SelectButton
+function <S> (
+  props: {
+    state        : S        // ステート
+    keyNames     : string[] // ステート内の文字配列までのパス
+    id           : string   // ユニークID
+    reverse?     : boolean  // 反転選択するか
+    [key: string]: any      // 拡張プロパティ
+  },
+  children: any             // 子要素 (VNode / string / 配列など)
+): VNode<S>
+```
 
 クラス名 `select` をトグルするボタン  
 A button component that toggles the `select` class on click.
@@ -164,7 +258,20 @@ A button component that toggles the `select` class on click.
 
 ---
 
-#### OptionButton
+### OptionButton
+
+```OptionButton
+function <S> (
+  props: {
+    state        : S        // ステート
+    keyNames     : string[] // ステート内の文字までのパス
+    id           : string   // ユニークID
+    reverse?     : boolean  // 反転選択するか
+    [key: string]: any      // 拡張プロパティ
+  },
+  children: any             // 子要素 (VNode / string / 配列など)
+): VNode<S>
+```
 
 クラス名 `select` を排他的に選択するボタン  
 A button component that exclusively applies the `select` class on click.
@@ -172,13 +279,20 @@ A button component that exclusively applies the `select` class on click.
 - 単一選択向け
 - `reverse` 指定で反転状態を持てます
 
----
-
 ## Effects / エフェクト
 
 Side-effect utilities for timed or state-driven UI behavior.
 
 ### effect_initializeNodes
+
+```effect_initializeNodes
+function effect_initializeNodes <S> (
+  nodes: {
+    id   : string                                             // ユニークID
+    event: (state: S, element: Element) => S | [S, Effect<S>] // 初期化イベント
+  }[]
+): (dispatch: Dispatch<S>) => void
+```
 
 DOM生成後に要素を取得して初期化処理を実行するエフェクト  
 An effect that retrieves DOM nodes after render and runs initialization logic.
@@ -220,6 +334,16 @@ such as after a `Route` switch.
 
 ### effect_setTimedValue
 
+```effect_setTimedValue
+function effect_setTimedValue <S, T> (
+  keyNames: string[],       // 値までのパス
+  id      : string,         // ユニークID
+  timeout : number,         // 存在可能時間 (ms)
+  value   : T,              // 一時的に設定する値
+  reset   : T | null = null // タイムアウト後に設定する値
+): (dispatch: Dispatch<S>) => void
+```
+
 ステートに存在時間制限付きの値を設定するエフェクト  
 An effect that sets a value in the state for a limited duration.
 
@@ -230,6 +354,15 @@ An effect that sets a value in the state for a limited duration.
 ---
 
 ### effect_throwMessage
+
+```effect_throwMessage
+function effect_throwMessage <S> (
+  keyNames: string[], // 値までのパス
+  id      : string,   // ユニークID
+  text    : string,   // 流し込む文字
+  interval: number,   // 次の文字を流し込むまでの間隔 (ms)
+): (dispatch: Dispatch<S>) => void
+```
 
 ステートに文字を一文字ずつ流し込むエフェクト  
 An effect that inserts text into the state one character at a time.
@@ -245,6 +378,12 @@ An effect that inserts text into the state one character at a time.
 
 ### effect_pauseThrowMessage
 
+```effect_pauseThrowMessage
+function effect_pauseThrowMessage <S> (
+  id: string // ユニークID
+): (dispatch: Dispatch<S>) => void
+```
+
 throwMessage を一時停止する  
 Pause an active `throwMessage` effect.
 
@@ -254,29 +393,37 @@ Pause an active `throwMessage` effect.
 
 ### effect_resumeThrowMessage
 
+```effect_resumeThrowMessage
+function effect_resumeThrowMessage <S> (
+  id: string // ユニークID
+)(dispatch: Dispatch<S>) => void
+```
+
 一時停止した throwMessage を再開する  
 Resume a paused `throwMessage` effect.
 
 - index を維持したまま再開します
 
----
-
 ## DOM / Event
 
 Utilities for working with DOM-related state and events.
 
-### interface ScrollMargin
+### getScrollMargin
 
-```ts
+```ScrollMargin
 interface ScrollMargin {
-  top   : number
-  left  : number
-  right : number
-  bottom: number
+  top   : number // 上までの余白
+  left  : number // 左までの余白
+  right : number // 右までの余白
+  bottom: number // 下までの余白
 }
 ```
 
-### getScrollMargin
+```getScrollMargin
+function getScrollMargin (
+  e: Event // イベント
+): ScrollMargin
+```
 
 スクロールの余白を取得する  
 Retrieve the scroll margin values from a scroll event target.
@@ -286,7 +433,7 @@ Retrieve the scroll margin values from a scroll event target.
 
 ---
 
-## Notes
+#### Notes
 
 - This library assumes immutable state updates
 - Designed for Hyperapp with effect-based side effects

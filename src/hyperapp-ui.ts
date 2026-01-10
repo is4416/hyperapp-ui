@@ -167,7 +167,7 @@ export const setLocalState = function <S> (
  * @template S
  * @param   {Record<string, any>} props          - プロパティ
  * @param   {S}                   props.state    - ステート
- * @param   {string[]}            props.keyNames - ステート内の文字までのパス
+ * @param   {string[]}            props.keyNames - ステート内の文字配列までのパス
  * @param   {string}              props.match    - 一致判定する文字
  * @param   {any}                 children       - 出力する内容 (VNode / 配列 / 文字など)
  * @returns {VNode<S> | null}
@@ -255,7 +255,7 @@ export const getClassList = (
  * @returns {Record<string, any>}
  */
 export const deleteKeys = (
-	props: { [key: string]: any},
+	props  : { [key: string]: any},
 	...keys: string[]
 ): { [key: string]: any } => {
 	const result = { ...props }
@@ -393,8 +393,8 @@ export const OptionButton = function <S> (
 /**
  * @template S
  * @type {Object} InitializeNode
- * @property {string} id - ユニークID
- * @property {(state: S, element: Element) => S | [S, Effect<S>]}
+ * @property {string}                                             id    - ユニークID
+ * @property {(state: S, element: Element) => S | [S, Effect<S>]} event - 初期化イベント
  */
 
 /**
@@ -406,7 +406,7 @@ export const OptionButton = function <S> (
  */
 export const effect_initializeNodes = function <S> (
 	nodes: {
-		id: string
+		id   : string
 		event: (state: S, element: Element) => S | [S, Effect<S>]
 	}[]
 ): (dispatch: Dispatch<S>) => void {
@@ -531,10 +531,10 @@ const action_throwMessageTick = function <S> (
  * @returns {(dispatch: Dispatch<S>) => void}
  */
 export const effect_throwMessage = function <S> (
-  keyNames: string[],
-  id      : string,
-  text    : string,
-  interval: number,
+	keyNames: string[],
+	id      : string,
+	text    : string,
+	interval: number,
 ): (dispatch: Dispatch<S>) => void {
 	return (dispatch: Dispatch<S>) => {
 		dispatch((state: S) => setLocalState(state, id, {
