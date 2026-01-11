@@ -2,14 +2,15 @@
 // import 
 // ---------- ---------- ---------- ---------- ----------
 
-import { app, VNode } from "hyperapp"
+import { app, Subscription, VNode } from "hyperapp"
 import h from "hyperapp-jsx-pragma"
 
 import {
-	setValue,
+	setValue, getValue,
 	Route, SelectButton, OptionButton,
 	effect_initializeNodes, effect_setTimedValue, effect_throwMessage, effect_pauseThrowMessage, effect_resumeThrowMessage,
-	ScrollMargin, getScrollMargin
+	subscription_nodesCleanup,
+	ScrollMargin, getScrollMargin,
 } from "./hyperapp-ui"
 
 // ---------- ---------- ---------- ---------- ----------
@@ -24,6 +25,7 @@ interface State {
 	timedText: string
 	throwMsg : string
 	node     : VNode<State> | null
+	finalize : boolean
 	margin   : ScrollMargin
 }
 
@@ -39,7 +41,8 @@ const action_reset = (state: State) => ({
 	timedText: "",
 	throwMsg : "",
 	node     : null,
-	margin   : { top: 0, left: 0, right: 0, bottom: 0 }
+	finalize : false,
+	margin   : { top: 0, left: 0, right: 0, bottom: 0 },
 })
 
 // ---------- ---------- ---------- ---------- ----------
@@ -69,6 +72,22 @@ const action_effectButtonClick = (state: State) => {
 }
 
 // ---------- ---------- ---------- ---------- ----------
+// action_throwAction
+// ---------- ---------- ---------- ---------- ----------
+
+const action_throwAction = (state: State) => {
+	return { ...state }
+}
+
+// ---------- ---------- ---------- ---------- ----------
+// action_toggleFinalize
+// ---------- ---------- ---------- ---------- ----------
+
+const action_toggleFinalize = (state: State) => {
+	return setValue(state, ["finalize"], !state.finalize)
+}
+
+// ---------- ---------- ---------- ---------- ----------
 // action_scroll
 // ---------- ---------- ---------- ---------- ----------
 
@@ -91,6 +110,7 @@ addEventListener("load", () => {
 		timedText: "",
 		throwMsg : "",
 		node     : null,
+		finalize : false,
 		margin   : { top: 0, left: 0, right: 0, bottom: 0 }
 	}
 
@@ -111,7 +131,8 @@ addEventListener("load", () => {
 					id       = "page3"
 					onclick  = { action_effectButtonClick }
 				>Effect</OptionButton>
-				<OptionButton state={state} keyNames={["group0"]} id="page4">DOM / Event</OptionButton>
+				<OptionButton state={state} keyNames={["group0"]} id="page4">Subscriptions</OptionButton>
+				<OptionButton state={state} keyNames={["group0"]} id="page5">DOM / Event</OptionButton>
 				<button type="button" onclick={action_reset}>reset</button>
 			</div>
 
@@ -168,8 +189,18 @@ addEventListener("load", () => {
 					</div>
 				</Route>
 
-				{/* *** page4: DOM / Event *** */}
+				{/* *** page4: Subscriptions *** */}
 				<Route state={state} keyNames={["group0"]} match="page4">
+					<h2>Subscriptions example</h2>
+
+					<h2>subscription_nodesCleanup</h2>
+					<button type="button" onclick={action_throwAction}>throw action</button>
+					<button type="button" onclick={action_toggleFinalize}>toggle object</button>
+					{ state.finalize ? (<span id="dom">object</span>) : null }
+				</Route>
+
+				{/* *** page5: DOM / Event *** */}
+				<Route state={state} keyNames={["group0"]} match="page5">
 					<h2>DOM / Event example</h2>
 
 					<h3>getScrollMargin</h3>
@@ -179,6 +210,14 @@ addEventListener("load", () => {
 					<div>{ JSON.stringify(state.margin) }</div>
 				</Route>
 			</div>
-		</main>)
+		</main>),
+
+		subscriptions: (state: State) => subscription_nodesCleanup([{
+			id      : "dom",
+			finalize: (state: State) => {
+				alert("finalize")
+				return state
+			}
+		}])
 	})
 })

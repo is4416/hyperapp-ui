@@ -564,6 +564,29 @@ const effect_resumeThrowMessage = function(id2) {
     });
   };
 };
+const subscription_nodesCleanup = function(nodes) {
+  const key = `local_key_lifecycle`;
+  return nodes.map((node) => [
+    (dispatch, payload) => {
+      dispatch((state) => {
+        const dom = document.getElementById(payload.id);
+        const keys = [key, payload.id, "initialized"];
+        const initialized = getValue(state, keys, false);
+        if (dom && !initialized) {
+          return setValue(state, keys, true);
+        }
+        if (!dom && initialized) {
+          const newState = setValue(state, keys, false);
+          return payload.finalize(newState);
+        }
+        return state;
+      });
+      return () => {
+      };
+    },
+    node
+  ]);
+};
 const getScrollMargin = function(e) {
   const el = e.currentTarget;
   if (!el) return { top: 0, left: 0, right: 0, bottom: 0 };
@@ -582,6 +605,7 @@ const action_reset = (state) => ({
   timedText: "",
   throwMsg: "",
   node: null,
+  finalize: false,
   margin: { top: 0, left: 0, right: 0, bottom: 0 }
 });
 const action_effectButtonClick = (state) => {
@@ -604,6 +628,12 @@ const action_effectButtonClick = (state) => {
     effect_throwMessage(["throwMsg"], "msg", text2, 50)
   ];
 };
+const action_throwAction = (state) => {
+  return { ...state };
+};
+const action_toggleFinalize = (state) => {
+  return setValue(state, ["finalize"], !state.finalize);
+};
 const action_scroll = (state, e) => {
   return setValue(state, ["margin"], getScrollMargin(e));
 };
@@ -616,6 +646,7 @@ addEventListener("load", () => {
     timedText: "",
     throwMsg: "",
     node: null,
+    finalize: false,
     margin: { top: 0, left: 0, right: 0, bottom: 0 }
   };
   app({
@@ -630,7 +661,7 @@ addEventListener("load", () => {
         onclick: action_effectButtonClick
       },
       "Effect"
-    ), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group0"], id: "page4" }, "DOM / Event"), /* @__PURE__ */ h("button", { type: "button", onclick: action_reset }, "reset")), /* @__PURE__ */ h("div", null, /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page1" }, /* @__PURE__ */ h("h2", null, "SelectButton example"), /* @__PURE__ */ h("h3", null, "select / none"), /* @__PURE__ */ h(SelectButton, { state, keyNames: ["selected"], id: "btn1" }, "select / none"), /* @__PURE__ */ h("h3", null, "select / reverse / none"), /* @__PURE__ */ h(SelectButton, { state, keyNames: ["selected"], id: "btn2", reverse: true }, "select / reverse / none")), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page2" }, /* @__PURE__ */ h("h2", null, "OptionButton example"), /* @__PURE__ */ h("h3", null, "select"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group1"], id: "g1_btn1" }, "group1_btn1"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group1"], id: "g1_btn2" }, "group1_btn2"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group1"], id: "g1_btn3" }, "group1_btn3"), /* @__PURE__ */ h("h3", null, "select / reverse"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group2"], id: "g2_btn1", reverse: true }, "group2_btn1"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group2"], id: "g2_btn2", reverse: true }, "group2_btn2"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group2"], id: "g2_btn3", reverse: true }, "group2_btn3")), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page3" }, /* @__PURE__ */ h("h2", null, "Effect example"), /* @__PURE__ */ h("h3", null, "effect_initializeNodes"), /* @__PURE__ */ h("input", { type: "text", id: "initTest" }), /* @__PURE__ */ h("h3", null, "effect_setTimedValue"), /* @__PURE__ */ h("input", { type: "text", id: "timedText", value: state.timedText }), state.node, /* @__PURE__ */ h("h3", null, "effect_throwMessage"), /* @__PURE__ */ h("input", { type: "text", id: "msg", value: state.throwMsg }), /* @__PURE__ */ h("div", null, /* @__PURE__ */ h(
+    ), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group0"], id: "page4" }, "Subscriptions"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group0"], id: "page5" }, "DOM / Event"), /* @__PURE__ */ h("button", { type: "button", onclick: action_reset }, "reset")), /* @__PURE__ */ h("div", null, /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page1" }, /* @__PURE__ */ h("h2", null, "SelectButton example"), /* @__PURE__ */ h("h3", null, "select / none"), /* @__PURE__ */ h(SelectButton, { state, keyNames: ["selected"], id: "btn1" }, "select / none"), /* @__PURE__ */ h("h3", null, "select / reverse / none"), /* @__PURE__ */ h(SelectButton, { state, keyNames: ["selected"], id: "btn2", reverse: true }, "select / reverse / none")), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page2" }, /* @__PURE__ */ h("h2", null, "OptionButton example"), /* @__PURE__ */ h("h3", null, "select"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group1"], id: "g1_btn1" }, "group1_btn1"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group1"], id: "g1_btn2" }, "group1_btn2"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group1"], id: "g1_btn3" }, "group1_btn3"), /* @__PURE__ */ h("h3", null, "select / reverse"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group2"], id: "g2_btn1", reverse: true }, "group2_btn1"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group2"], id: "g2_btn2", reverse: true }, "group2_btn2"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group2"], id: "g2_btn3", reverse: true }, "group2_btn3")), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page3" }, /* @__PURE__ */ h("h2", null, "Effect example"), /* @__PURE__ */ h("h3", null, "effect_initializeNodes"), /* @__PURE__ */ h("input", { type: "text", id: "initTest" }), /* @__PURE__ */ h("h3", null, "effect_setTimedValue"), /* @__PURE__ */ h("input", { type: "text", id: "timedText", value: state.timedText }), state.node, /* @__PURE__ */ h("h3", null, "effect_throwMessage"), /* @__PURE__ */ h("input", { type: "text", id: "msg", value: state.throwMsg }), /* @__PURE__ */ h("div", null, /* @__PURE__ */ h(
       "button",
       {
         type: "button",
@@ -644,6 +675,13 @@ addEventListener("load", () => {
         onclick: (state2) => [state2, effect_resumeThrowMessage("msg")]
       },
       "resume"
-    ))), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page4" }, /* @__PURE__ */ h("h2", null, "DOM / Event example"), /* @__PURE__ */ h("h3", null, "getScrollMargin"), /* @__PURE__ */ h("div", { id: "parent", onscroll: action_scroll }, /* @__PURE__ */ h("div", { id: "child" }, "スクロールしてください")), /* @__PURE__ */ h("div", null, JSON.stringify(state.margin)))))
+    ))), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page4" }, /* @__PURE__ */ h("h2", null, "Subscriptions example"), /* @__PURE__ */ h("h2", null, "subscription_nodesCleanup"), /* @__PURE__ */ h("button", { type: "button", onclick: action_throwAction }, "throw action"), /* @__PURE__ */ h("button", { type: "button", onclick: action_toggleFinalize }, "toggle object"), state.finalize ? /* @__PURE__ */ h("span", { id: "dom" }, "object") : null), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page5" }, /* @__PURE__ */ h("h2", null, "DOM / Event example"), /* @__PURE__ */ h("h3", null, "getScrollMargin"), /* @__PURE__ */ h("div", { id: "parent", onscroll: action_scroll }, /* @__PURE__ */ h("div", { id: "child" }, "スクロールしてください")), /* @__PURE__ */ h("div", null, JSON.stringify(state.margin))))),
+    subscriptions: (state) => subscription_nodesCleanup([{
+      id: "dom",
+      finalize: (state2) => {
+        alert("finalize");
+        return state2;
+      }
+    }])
   });
 });

@@ -1,4 +1,4 @@
-import { VNode, Dispatch, Effect } from "hyperapp"
+import { VNode, Dispatch, Effect, Subscription } from "hyperapp"
 import h from "hyperapp-jsx-pragma"
 
 // ========== ========== ========== ========== ==========
@@ -594,6 +594,64 @@ export const effect_resumeThrowMessage = function <S> (
 			return action_throwMessageTick(keyNames, id, msg, interval)
 		})
 	}
+}
+
+// ========== ========== ========== ========== ==========
+// サブスクリプション
+// ========== ========== ========== ========== ==========
+
+// ---------- ---------- ---------- ---------- ----------
+// subscription_nodesCleanup
+// ---------- ---------- ---------- ---------- ----------
+
+/**
+ * @type {Object} CleanupNode
+ * @property {string}                           id       - ユニークID
+ * @property {(state: S) => S | [S, Effect<S>]} finalize - クリーンアップイベント
+ */
+
+/**
+ * DOMが存在しない場合、クリーンアップ処理を実行するサブスクリプト
+ * クリーンアップは、DOMが廃棄された直後ではなく、次のアクション時に実行されます
+ * 
+ * @template S
+ * @param   {CleanupNode<S>[]} nodes - クリーンアップ対象ノード定義配列
+ * @returns {Subscription<S>[]}
+ */
+export const subscription_nodesCleanup = function <S>(
+	nodes: {
+		id      : string
+		finalize: (state: S) => S | [S, Effect<S>]
+	}[]
+): Subscription<S>[] {
+	const key = `local_key_lifecycle`
+
+	return nodes.map(node => [
+		(dispatch: Dispatch<S>, payload: typeof node) => {
+			dispatch((state: S) => {
+				const dom = document.getElementById(payload.id)
+				const keys = [key, payload.id, "initialized"]
+
+				const initialized = getValue(state, keys, false)
+
+				// initialize
+				if (dom && !initialized) {
+					return setValue(state, keys, true)
+				}
+
+				// finalize
+				if (!dom && initialized) {
+					const newState = setValue(state, keys, false)
+					return payload.finalize(newState)
+				}
+
+				return state
+			})
+
+			return () => {}
+		},
+		node
+	])
 }
 
 // ========== ========== ========== ========== ==========

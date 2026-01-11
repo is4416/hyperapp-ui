@@ -15,17 +15,24 @@ JSX を使用する場合は `hyperapp-jsx-pragma` を前提としています�
 - [setValue](#setvalue)
 - [getLocalState](#getlocalstate)
 - [setLocalState](#setlocalstate)
+
 - [Route](#route)
+
 - [concatAction](#concataction)
 - [getClassList](#getclasslist)
 - [deleteKeys](#deletekeys)
+
 - [SelectButton](#selectbutton)
 - [OptionButton](#optionbutton)
+
 - [effect_initializeNodes](#effect_initializenodes)
 - [effect_setTimedValue](#effect_settimedvalue)
 - [effect_throwMessage](#effect_throwmessage)
 - [effect_pauseThrowMessage](#effect_pausethrowmessage)
 - [effect_resumeThrowMessage](#effect_resumethrowmessage)
+
+- [subscription_nodesCleanup](#subscription_nodescleanup)
+
 - [getScrollMargin](#getscrollmargin)
 
 ## Design / 設計方針
@@ -53,8 +60,11 @@ VNode マウント後の初期化処理が必要な場合には `effect_initiali
 これにより、サイズ取得や外部ライブラリ初期化などを安全に行えます。
 
 `concatAction` は、この仕組みを補助するもので、アクションを結合する際に利用することで、  
-汎用的なコンポーネント設計が可能になります。  
+汎用的なコンポーネント設計が可能になります。
 
+また、Hyperapp では DOM 廃棄時（アンマウント）のタイミングを知るすべがありませんが、  
+DOMを監視し、ガベージコレクション風に終了処理を行うための手段として `subscription_nodesCleanup`  
+を作成しました。
 
 その他の関数は、これらの使用例や、補助的なユーティリティなどとなります。  
 
@@ -294,7 +304,7 @@ function effect_initializeNodes <S> (
 ): (dispatch: Dispatch<S>) => void
 ```
 
-DOM生成後に要素を取得して初期化処理を実行するエフェクト  
+DOM生成（マウント）後に要素を取得して初期化処理を実行するエフェクト  
 An effect that retrieves DOM nodes after render and runs initialization logic.
 
 #### Behavior
@@ -403,6 +413,50 @@ function effect_resumeThrowMessage <S> (
 Resume a paused `throwMessage` effect.
 
 - index を維持したまま再開します
+
+## Subscriptions / サブスクリプション
+
+Side-effect utilities for application subscriptions.
+
+### subscription_nodesCleanup
+
+```subscription_nodesCleanup
+function subscription_nodesCleanup <S> (
+  nodes: {
+    id      : string
+    finalize: (state: S) => S | [S, Effect<S>]
+  }[]
+): Subscription<S>[]
+```
+
+DOM が存在しない場合にクリーンアップ処理を実行するサブスクリプション。  
+This subscription performs cleanup for nodes that no longer exist in the DOM.
+
+クリーンアップは **次のアクション時に実行** されます。  
+The cleanup is carried out during the next action.
+
+```example
+app({
+  subscriptions: (state: State) => subscription_nodesCleanup([
+    { id: "hoge1", finalize: action_hoge1Finalize },
+    { id: "hoge2", finalize: action_hoge2Finalize }
+  ])
+})
+```
+
+#### Behavior
+
+- 各ノードは id に基づき一度だけクリーンアップが実行されます
+- DOM が存在しない場合に `finalize` が実行されます
+- 再作成された DOM が破棄された場合には、再度 `finalize` が実行されます
+- 大量の DOM を監視することを想定して、作成してはいません
+
+#### Notes
+
+- 初期化は `effect_initializeNodes` で実行し、終了タイミングが厳密でなくても良い場合に使用します
+- hyperappには、DOM が破棄（アンマウント）されたタイミングを知るためのライフサイクルイベントがありません
+- このサブスクリプションは、ガベージコレクションをイメージした終了処理です
+- 基本的には、終了処理はステートで管理して自前で行った方が良いでしょう
 
 ## DOM / Event
 
