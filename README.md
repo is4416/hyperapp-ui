@@ -16,12 +16,12 @@ JSX を使用する場合は `hyperapp-jsx-pragma` を前提としています�
 - [getLocalState](#getlocalstate)
 - [setLocalState](#setlocalstate)
 
-- [Route](#route)
-
+- [el](#el)
 - [concatAction](#concataction)
 - [getClassList](#getclasslist)
 - [deleteKeys](#deletekeys)
 
+- [Route](#route)
 - [SelectButton](#selectbutton)
 - [OptionButton](#optionbutton)
 
@@ -78,13 +78,13 @@ src
  └ hyperapp-ui.ts
 ```
 
-## State Utilities / 状態操作
+## (1) State Utilities / 状態操作
 
 Utilities for safely accessing and updating nested state structures.
 
 ### getValue
 
-```getValue
+```ts
 function getValue <S, D> (
   state   : S,        // ステート
   keyNames: string[], // 値までのパス
@@ -102,7 +102,7 @@ Traverse a path in the state object and retrieve the value.
 
 ### setValue
 
-```setValue
+```ts
 function setValue <S> (
   state   : S,        // ステート
   keyNames: string[], // 値までのパス
@@ -120,7 +120,7 @@ Traverse a path in the state object, set a value, and return the updated state.
 
 ### getLocalState
 
-```getLocalState
+```ts
 function getLocalState <S> (
   state: S,                     // ステート
   id   : string,                // ユニークID
@@ -135,7 +135,7 @@ Retrieve a local state object associated with a given ID.
 
 ### setLocalState
 
-```setLocalState
+```ts
 function setLocalState <S> (
   state: S,                     // ステート
   id   : string,                // ユニークID
@@ -152,7 +152,7 @@ Update a local state object and return the updated state.
 
 Local state is stored directly on the root state object using a generated key:
 
-```
+```ts
 local_key_<id>
 ```
 
@@ -162,40 +162,29 @@ This design:
 - Keeps UI-specific state isolated by ID
 - Allows immediate access and cancellation (e.g. timers)
 
-## Display Control / 表示制御
-
-Components for conditional rendering based on state values.
-
-### Route
-
-```Route
-function <S> Route (
-  props: {
-    state   : S        // ステート
-    keyNames: string[] // ステート内の文字配列までのパス
-    match   : string   // 一致する文字
-  },
-  children: any        // 出力する内容 (VNode / 配列 / 文字など)
-): VNode<S> | null
-```
-
-ステート内の文字列と一致した場合に VNode を返す  
-Return a VNode when the state value at the given path matches a string.
-
-- 一致しない場合は `null` を返します
-- `null` の場合、VNode は生成されません
-
-This allows safe conditional rendering without extra checks.
-
-## Selection / 選択
+## (2) Selection Utilities / 選択
 
 Helpers and components for managing selection state via class names.
 
-#### Helper Functions / 補助関数
+### el
+
+```ts
+function el (
+  tag: string
+) => <S> (
+  props?:{ [key: string]: any },
+  children?: Array<any>
+): VNode<S>
+```
+
+Hyperapp の h 関数のラッパー。JSXと競合する場合に使用する。  
+hyperapp h rapper
+
+---
 
 ### concatAction
 
-```concatAction
+```ts
 function concatAction <S, E> (
   action  : undefined | ((state: S, e: E) => S | [S, Effect<S>]), // 結合するアクション
   newState: S,                                                    // 結合するステート
@@ -218,7 +207,7 @@ Combine an action with a new state and an optional event.
 
 ### getClassList
 
-```getClassList
+```ts
 function getClassList (
   props: { [key: string]: any } // オブジェクト
 ): string[]
@@ -231,7 +220,7 @@ Extract a `classList` array from a props object.
 
 ### deleteKeys
 
-```deleteKeys
+```ts
 function deleteKeys (
   props  : { [key: string]: any}, // オブジェクト
   ...keys: string[]               // 削除するキー
@@ -241,13 +230,36 @@ function deleteKeys (
 props から不要なキーを除去する  
 Remove specified keys from a props object.
 
----
+## (3) Selection Component / 選択系コンポーネント
 
-#### Components / コンポーネント
+Components for conditional rendering based on state values.
+
+### Route
+
+```ts
+function <S> Route (
+  props: {
+    state   : S        // ステート
+    keyNames: string[] // ステート内の文字配列までのパス
+    match   : string   // 一致する文字
+  },
+  children: any        // 出力する内容 (VNode / 配列 / 文字など)
+): VNode<S> | null
+```
+
+ステート内の文字列と一致した場合に VNode を返す  
+Return a VNode when the state value at the given path matches a string.
+
+- 一致しない場合は `null` を返します
+- `null` の場合、VNode は生成されません
+
+This allows safe conditional rendering without extra checks.
+
+---
 
 ### SelectButton
 
-```SelectButton
+```ts
 function <S> (
   props: {
     state        : S        // ステート
@@ -270,7 +282,7 @@ A button component that toggles the `select` class on click.
 
 ### OptionButton
 
-```OptionButton
+```ts
 function <S> (
   props: {
     state        : S        // ステート
@@ -289,13 +301,13 @@ A button component that exclusively applies the `select` class on click.
 - 単一選択向け
 - `reverse` 指定で反転状態を持てます
 
-## Effects / エフェクト
+## (4) Effects / エフェクト
 
 Side-effect utilities for timed or state-driven UI behavior.
 
 ### effect_initializeNodes
 
-```effect_initializeNodes
+```ts
 function effect_initializeNodes <S> (
   nodes: {
     id   : string                                             // ユニークID
@@ -322,7 +334,7 @@ An effect that retrieves DOM nodes after render and runs initialization logic.
 - スクロール位置初期化
 - 外部 UI ライブラリのバインド処理
 
-```example
+```ts
 effect_initializeNodes([
   {
     id   : "chart",
@@ -344,7 +356,7 @@ such as after a `Route` switch.
 
 ### effect_setTimedValue
 
-```effect_setTimedValue
+```ts
 function effect_setTimedValue <S, T> (
   keyNames: string[],       // 値までのパス
   id      : string,         // ユニークID
@@ -365,7 +377,7 @@ An effect that sets a value in the state for a limited duration.
 
 ### effect_throwMessage
 
-```effect_throwMessage
+```ts
 function effect_throwMessage <S> (
   keyNames: string[], // 値までのパス
   id      : string,   // ユニークID
@@ -388,7 +400,7 @@ An effect that inserts text into the state one character at a time.
 
 ### effect_pauseThrowMessage
 
-```effect_pauseThrowMessage
+```ts
 function effect_pauseThrowMessage <S> (
   id: string // ユニークID
 ): (dispatch: Dispatch<S>) => void
@@ -403,7 +415,7 @@ Pause an active `throwMessage` effect.
 
 ### effect_resumeThrowMessage
 
-```effect_resumeThrowMessage
+```ts
 function effect_resumeThrowMessage <S> (
   id: string // ユニークID
 )(dispatch: Dispatch<S>) => void
@@ -414,13 +426,13 @@ Resume a paused `throwMessage` effect.
 
 - index を維持したまま再開します
 
-## Subscriptions / サブスクリプション
+## (5) Subscriptions / サブスクリプション
 
 Side-effect utilities for application subscriptions.
 
 ### subscription_nodesCleanup
 
-```subscription_nodesCleanup
+```ts
 function subscription_nodesCleanup <S> (
   nodes: {
     id      : string
@@ -435,7 +447,7 @@ This subscription performs cleanup for nodes that no longer exist in the DOM.
 クリーンアップは **次のアクション時に実行** されます。  
 The cleanup is carried out during the next action.
 
-```example
+```ts
 app({
   subscriptions: (state: State) => subscription_nodesCleanup([
     { id: "hoge1", finalize: action_hoge1Finalize },
@@ -458,13 +470,13 @@ app({
 - このサブスクリプションは、ガベージコレクションをイメージした終了処理です
 - 基本的には、終了処理はステートで管理して自前で行った方が良いでしょう
 
-## DOM / Event
+## (6) DOM / Event
 
 Utilities for working with DOM-related state and events.
 
 ### getScrollMargin
 
-```ScrollMargin
+```ts
 interface ScrollMargin {
   top   : number // 上までの余白
   left  : number // 左までの余白
@@ -473,7 +485,7 @@ interface ScrollMargin {
 }
 ```
 
-```getScrollMargin
+```ts
 function getScrollMargin (
   e: Event // イベント
 ): ScrollMargin

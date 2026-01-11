@@ -1,5 +1,4 @@
-import { VNode, Dispatch, Effect, Subscription } from "hyperapp"
-import h from "hyperapp-jsx-pragma"
+import { h, text, VNode, Dispatch, Effect, Subscription } from "hyperapp"
 
 // ========== ========== ========== ========== ==========
 // 状態操作
@@ -155,45 +154,34 @@ export const setLocalState = function <S> (
 }
 
 // ========== ========== ========== ========== ==========
-// 表示制御
+// コンポーネント
+// ========== ========== ========== ========== ==========
+
+// ========== ========== ========== ========== ==========
+// 補助関数
 // ========== ========== ========== ========== ==========
 
 // ---------- ---------- ---------- ---------- ----------
-// Route
+// el
 // ---------- ---------- ---------- ---------- ----------
 /**
- * ステート内の文字とmatchした時、VNodeを返す
+ * h 関数のラッパー
+ * 他でjsxを使用した場合、hが競合する可能性があるので作成した
  * 
  * @template S
- * @param   {Record<string, any>} props          - プロパティ
- * @param   {S}                   props.state    - ステート
- * @param   {string[]}            props.keyNames - ステート内の文字配列までのパス
- * @param   {string}              props.match    - 一致判定する文字
- * @param   {any}                 children       - 出力する内容 (VNode / 配列 / 文字など)
- * @returns {VNode<S> | null}
+ * @param   {string} tag - タグ名
+ * @returns {VNode<S>}
  */
-export const Route = function <S> (
-	props: {
-		state   : S
-		keyNames: string[]
-		match   : string
-	},
-	children: any
-): VNode<S> | null {
-	const { state, keyNames, match } = props
-	const selectedName = getValue(state, keyNames, "")
+export const el = (tag: string) => <S> (props?:{ [key: string]: any }, children?: Array<any>): VNode<S> => h(
+	tag,
+	props ?? {},
+	children
+		? children.map((child: any) => typeof child === "object" ? child : text(child))
+		: []
+)
 
-	// nullの場合、VNodeは生成されない
-	return selectedName === match ? children : null
-}
-
-// ========== ========== ========== ========== ==========
-// 選択
-// ========== ========== ========== ========== ==========
-
-const REVERSE_PREFIX = "r_"
-
-/* 補助関数 */
+/* element */
+const button = el("button")
 
 // ---------- ---------- ---------- ---------- ----------
 // concatAction
@@ -265,11 +253,48 @@ export const deleteKeys = (
 	return result
 }
 
-/* コンポーネント */
+// ========== ========== ========== ========== ==========
+// 選択
+// ========== ========== ========== ========== ==========
+
+// ---------- ---------- ---------- ---------- ----------
+// Route
+// ---------- ---------- ---------- ---------- ----------
+/**
+ * ステート内の文字とmatchした時、VNodeを返す
+ * 
+ * @template S
+ * @param   {Record<string, any>} props          - プロパティ
+ * @param   {S}                   props.state    - ステート
+ * @param   {string[]}            props.keyNames - ステート内の文字配列までのパス
+ * @param   {string}              props.match    - 一致判定する文字
+ * @param   {any}                 children       - 出力する内容 (VNode / 配列 / 文字など)
+ * @returns {VNode<S> | null}
+ */
+export const Route = function <S> (
+	props: {
+		state   : S
+		keyNames: string[]
+		match   : string
+	},
+	children: any
+): VNode<S> | null {
+	const { state, keyNames, match } = props
+	const selectedName = getValue(state, keyNames, "")
+
+	// nullの場合、VNodeは生成されない
+	return selectedName === match ? children : null
+}
+
+// ========== ========== ========== ========== ==========
+// 選択
+// ========== ========== ========== ========== ==========
+const REVERSE_PREFIX = "r_"
 
 // ---------- ---------- ---------- ---------- ----------
 // SelectButton
 // ---------- ---------- ---------- ---------- ----------
+
 /**
  * クリックで、クラス名のselectをトグルするボタン
  * 
@@ -318,7 +343,7 @@ export const SelectButton = function <S> (
 	}
 
 	// VNode
-	return h("button", {
+	return button({
 		type: "button",
 		...deleteKeys(props, "state", "keyNames", "reverse"),
 		class  : classList.join(" "),
@@ -374,7 +399,7 @@ export const OptionButton = function <S> (
 	}
 
 	// VNode
-	return h("button", {
+	return button({
 		type: "button",
 		...deleteKeys(props, "state", "keyNames", "reverse"),
 		class  : classList.join(" "),

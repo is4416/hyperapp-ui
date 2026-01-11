@@ -400,12 +400,12 @@ const setLocalState = function(state, id2, value) {
     }
   };
 };
-const Route = function(props, children) {
-  const { state, keyNames, match } = props;
-  const selectedName = getValue(state, keyNames, "");
-  return selectedName === match ? children : null;
-};
-const REVERSE_PREFIX = "r_";
+const el = (tag) => (props, children) => h$1(
+  tag,
+  props ?? {},
+  children ? children.map((child) => typeof child === "object" ? child : text(child)) : []
+);
+const button = el("button");
 const concatAction = function(action, newState, e) {
   if (!action) return newState;
   const effect = (dispatch) => {
@@ -423,6 +423,12 @@ const deleteKeys = (props, ...keys) => {
   keys.forEach((key) => delete result[key]);
   return result;
 };
+const Route = function(props, children) {
+  const { state, keyNames, match } = props;
+  const selectedName = getValue(state, keyNames, "");
+  return selectedName === match ? children : null;
+};
+const REVERSE_PREFIX = "r_";
 const SelectButton = function(props, children) {
   const { state, keyNames, id: id2, reverse = false } = props;
   const classList = getClassList(props).filter((item) => {
@@ -438,7 +444,7 @@ const SelectButton = function(props, children) {
     const newState = setValue(state2, keyNames, newList);
     return concatAction(props.onclick, newState, e);
   };
-  return h("button", {
+  return button({
     type: "button",
     ...deleteKeys(props, "state", "keyNames", "reverse"),
     class: classList.join(" "),
@@ -460,7 +466,7 @@ const OptionButton = function(props, children) {
     const newState = setValue(state2, keyNames, newValue);
     return concatAction(props.onclick, newState, e);
   };
-  return h("button", {
+  return button({
     type: "button",
     ...deleteKeys(props, "state", "keyNames", "reverse"),
     class: classList.join(" "),
@@ -588,13 +594,13 @@ const subscription_nodesCleanup = function(nodes) {
   ]);
 };
 const getScrollMargin = function(e) {
-  const el = e.currentTarget;
-  if (!el) return { top: 0, left: 0, right: 0, bottom: 0 };
+  const el2 = e.currentTarget;
+  if (!el2) return { top: 0, left: 0, right: 0, bottom: 0 };
   return {
-    top: el.scrollTop,
-    left: el.scrollLeft,
-    right: el.scrollWidth - (el.clientWidth + el.scrollLeft),
-    bottom: el.scrollHeight - (el.clientHeight + el.scrollTop)
+    top: el2.scrollTop,
+    left: el2.scrollLeft,
+    right: el2.scrollWidth - (el2.clientWidth + el2.scrollLeft),
+    bottom: el2.scrollHeight - (el2.clientHeight + el2.scrollTop)
   };
 };
 const action_reset = (state) => ({

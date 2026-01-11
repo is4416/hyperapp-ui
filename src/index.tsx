@@ -2,9 +2,8 @@
 // import 
 // ---------- ---------- ---------- ---------- ----------
 
-import { app, Subscription, VNode } from "hyperapp"
+import { app, VNode } from "hyperapp"
 import h from "hyperapp-jsx-pragma"
-
 import {
 	setValue, getValue,
 	Route, SelectButton, OptionButton,
