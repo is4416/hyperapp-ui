@@ -649,7 +649,7 @@ export const subscription_nodesCleanup = function <S>(
 		finalize: (state: S) => S | [S, Effect<S>]
 	}[]
 ): Subscription<S>[] {
-	const key = `local_key_lifecycle`
+	const key = `local_key_nodesCleanup`
 
 	return nodes.map(node => [
 		(dispatch: Dispatch<S>, payload: typeof node) => {
@@ -675,6 +675,66 @@ export const subscription_nodesCleanup = function <S>(
 
 			return () => {}
 		},
+		node
+	])
+}
+
+// ---------- ---------- ---------- ---------- ----------
+// subscription_nodesLifecycleByIds
+// ---------- ---------- ---------- ---------- ----------
+/**
+ * @type {Object} LifecycleNode
+ * @property {string}                                                    id         - ユニークID
+ * @property {(state: S, element: Element | null) => S | [S, Effect<S>]} initialize - 初期化イベント
+ * @property {(state: S, element: Element | null) => S | [S, Effect<S>]} finalize   - 終了イベント
+ */
+
+/**
+ * 登録されたIDを元に、初期化・終了処理を実行するサブスクリプト
+ * IDに一致するDOMが存在する場合、イベント時にがセットされます
+ * 
+ * @template S
+ * @param   {string[]} keyNames - 文字配列までのパス
+ * @param   {} nodes - 監視対象ノード定義配列
+ * @returns {Subscription<S>[]}
+ */
+export const subscription_nodesLifecycleByIds = function <S> (
+	keyNames: string[],
+	nodes: {
+		id        : string
+		initialize: (state: S, element: Element | null) => S | [S, Effect<S>]
+		finalize  : (state: S, element: Element | null) => S | [S, Effect<S>]
+	}[]
+): Subscription<S>[] {
+	const key  = "local_key_nodesLifecycleByIds"
+
+	return nodes.map(node => [
+		(dispatch: Dispatch<S>, payload: typeof node) => {
+			dispatch((state: S) => {
+				const dom  = document.getElementById(payload.id)
+				const keys = [key, payload.id, "initialized"]
+
+				const list = getValue(state, keyNames, [] as string[])
+				const initialized = getValue(state, keys, false)
+
+				// initialize
+				if (list.includes(payload.id) && !initialized) {
+					const newState = setValue(state, keys, true)
+					return node.initialize(newState, dom)
+				}
+
+				// finalize
+				if (!list.includes(payload.id) && initialized) {
+					const newState = setValue(state, keys, false)
+					return node.finalize(newState, dom)
+				}
+
+				return state
+			})
+
+			return () => {}
+		}
+		,
 		node
 	])
 }

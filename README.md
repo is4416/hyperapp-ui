@@ -32,6 +32,7 @@ JSX を使用する場合は `hyperapp-jsx-pragma` を前提としています�
 - [effect_resumeThrowMessage](#effect_resumethrowmessage)
 
 - [subscription_nodesCleanup](#subscription_nodescleanup)
+- [subscription_nodesLifecycleByIds](#subscription_nodeslifecyclebyids)
 
 - [getScrollMargin](#getscrollmargin)
 
@@ -469,6 +470,83 @@ app({
 - hyperappには、DOM が破棄（アンマウント）されたタイミングを知るためのライフサイクルイベントがありません
 - このサブスクリプションは、ガベージコレクションをイメージした終了処理です
 - 基本的には、終了処理はステートで管理して自前で行った方が良いでしょう
+
+---
+
+### subscription_nodesLifecycleByIds
+
+```ts
+function subscription_nodesLifecycleByIds <S> (
+  keyNames: string[],
+    nodes: {
+      id        : string
+      initialize: (state: S, element: Element | null) => S | [S, Effect<S>]
+      finalize  : (state: S, element: Element | null) => S | [S, Effect<S>]
+    }[]
+  ): Subscription<S>[] {
+```
+
+ステート上の ID配列の変化 を監視し、ノードの 初期化・終了処理を自動管理 するサブスクリプション。  
+This subscription manages node initialization and cleanup based on an ID list in the state.
+
+- ID が リストに追加されたとき   → initialize 実行
+- ID が リストから削除されたとき → finalize 実行
+
+各処理は 一度だけ 実行されます。  
+DOM が存在する場合、該当要素が element 引数として渡されます。
+
+```ts
+app({
+  subscriptions: (state: State) =>
+    subscription_nodesLifecycleByIds(
+      ["ui", "activeIds"],
+      [
+        {
+          id: "hoge1",
+          initialize: action_hoge1Init,
+          finalize  : action_hoge1Finalize
+        },
+        {
+          id: "hoge2",
+          initialize: action_hoge2Init,
+          finalize  : action_hoge2Finalize
+        }
+      ]
+    )
+})
+```
+
+#### Behavior
+
+- keyNames で指定されたパスの ID配列 を監視します
+- ID が 追加された瞬間 に initialize が実行されます
+- ID が 削除された瞬間 に finalize が実行されます
+- 各ノードは 多重実行されません
+- DOM が存在する場合のみ element が渡されます（存在しない場合は null）
+
+#### Notes
+
+- DOM の マウント/アンマウントを直接検知しているわけではありません
+- あくまで ステートの変化をトリガー にしています
+- UI状態をステートで管理している設計と相性が良いです
+- DOMの寿命とステートを 同期させたい場合 に有効です
+- subscription_nodesCleanup より 厳密な制御 が可能です
+- 初期化終了箇所が複数あり、  
+  個別のイベントで管理しきれなくなった場合に使用すると良いでしょう
+
+| 機能     | nodesCleanup | nodesLifecycleByIds |
+| -------- | ------------ | ------------------- |
+| トリガー | DOM消失検知  | ステート変化        |
+| 初期化   | 非対応       | 対応                |
+| 終了制御 | ざっくり     | いくらか制御可能    |
+| 想定用途 | GC的処理     | ライフサイクル管理  |
+
+#### Concept
+
+- nodesCleanup
+  → DOMが消えたっぽい から掃除する
+- nodesLifecycleByIds
+  → ステートが変わった から正確に制御する
 
 ## (6) DOM / Event
 
