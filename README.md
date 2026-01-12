@@ -491,11 +491,30 @@ This subscription manages node initialization and cleanup based on an ID list in
 
 - ID が リストに追加されたとき   → initialize 実行
 - ID が リストから削除されたとき → finalize 実行
+- 各処理は 一度だけ 実行されます。  
+- DOM が存在する場合、該当要素が element 引数として渡されます。
+- DOM の生成前に initialize が実行されることもあるため、DOMが必要な場合は  
+  `initialize` に指定するイベントに `effect_initializeNodes` を追加してください
 
-各処理は 一度だけ 実行されます。  
-DOM が存在する場合、該当要素が element 引数として渡されます。
-
+example
 ```ts
+// action
+const action_hoge2Init = (state: State) => {
+  const action = (state: State, element: Element) => {
+    alert("DOM が存在します")
+    return state
+  }
+
+  return [
+    state,
+    effect_initializeNodes([{
+      id   : "hoge2",
+      event: action
+    }])
+  ]
+}
+
+// app
 app({
   subscriptions: (state: State) =>
     subscription_nodesLifecycleByIds(
