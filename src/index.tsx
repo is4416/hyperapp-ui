@@ -242,6 +242,8 @@ addEventListener("load", () => {
 
 					<h3>effect_rAFMoveTo</h3>
 					<button state={state} onclick={action_move} id="raf">move</button>
+
+					<h3>effect_rAFProperties</h3>
 					<button state={state} onclick={action_setProperties} id="rafP">font</button>
 				</Route>
 
