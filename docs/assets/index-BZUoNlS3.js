@@ -571,7 +571,7 @@ const effect_resumeThrowMessage = function(id2) {
   };
 };
 const subscription_nodesCleanup = function(nodes) {
-  const key = `local_key_lifecycle`;
+  const key = `local_key_nodesCleanup`;
   return nodes.map((node) => [
     (dispatch, payload) => {
       dispatch((state) => {
@@ -592,6 +592,111 @@ const subscription_nodesCleanup = function(nodes) {
     },
     node
   ]);
+};
+const subscription_rAFManager = function(state, keyNames) {
+  const sortFn = (a, b) => (b.priority ?? 0) - (a.priority ?? 0);
+  const tasks = getValue(state, keyNames, []).filter((task) => document.getElementById(task.id)).filter((task) => task.done !== true).sort(sortFn);
+  return [
+    (dispatch, payload) => {
+      if (payload.length === 0) return () => {
+      };
+      let rafId = 0;
+      const loop = (now) => {
+        dispatch((state2) => {
+          const tasks2 = getValue(state2, keyNames, []).filter((task) => document.getElementById(task.id)).filter((task) => task.done !== true).sort(sortFn);
+          const newTasks = tasks2.flatMap((task) => {
+            if (task.paused) return [task];
+            const newTask = {
+              ...task,
+              startTime: task.startTime ?? now,
+              currentTime: now,
+              deltaTime: task.currentTime ? now - task.currentTime : 0,
+              elapsedTime: now - (task.startTime ?? now)
+            };
+            if (now >= task.startTime) {
+              dispatch([task.action, newTask]);
+            }
+            return [newTask];
+          });
+          return setValue(state2, keyNames, newTasks);
+        });
+        rafId = requestAnimationFrame(loop);
+      };
+      rafId = requestAnimationFrame(loop);
+      return () => cancelAnimationFrame(rafId);
+    },
+    tasks
+  ];
+};
+const effect_rAFMoveTo = function({
+  id: id2,
+  keyNames,
+  before,
+  after,
+  speed,
+  onfinish
+}) {
+  const dx = after.left - before.left;
+  const dy = after.top - before.top;
+  const action = (state, rafTask) => {
+    const dom = document.getElementById(rafTask.id);
+    if (!dom) return state;
+    const progress = Math.min(1, (rafTask.elapsedTime ?? 0) / Math.max(1, speed));
+    dom.style.transform = `translate(${dx * progress}px, ${dy * progress}px)`;
+    if (progress < 1) return state;
+    const newTaskItems = getValue(state, keyNames, []).filter((task) => task.id !== rafTask.id).filter((task) => task.done !== true);
+    const newState = setValue(state, keyNames, newTaskItems);
+    dom.style.willChange = "";
+    rafTask.done = true;
+    return onfinish ? onfinish(newState, rafTask) : newState;
+  };
+  return ((dispatch) => {
+    dispatch((state) => {
+      const taskItems = getValue(state, keyNames, []).filter((task) => task.id !== id2).filter((task) => task.done !== true);
+      const dom = document.getElementById(id2);
+      if (dom) dom.style.willChange = "transform";
+      return setValue(state, keyNames, taskItems.concat({
+        id: id2,
+        action,
+        extension: { before, after }
+      }));
+    });
+  });
+};
+const effect_rAFProperties = function({
+  id: id2,
+  keyNames,
+  properties,
+  speed,
+  onfinish
+}) {
+  const action = (state, rafTask) => {
+    const dom = document.getElementById(rafTask.id);
+    if (!dom) return state;
+    const progress = Math.min(1, (rafTask.elapsedTime ?? 0) / Math.max(1, speed));
+    properties.forEach((p) => {
+      const val = `${p.before + (p.after - p.before) * progress}${p.unit ?? ""}`;
+      dom.style.setProperty(p.name, val);
+    });
+    if (progress < 1) return state;
+    const newTaskItems = getValue(state, keyNames, []).filter((task) => task.id !== rafTask.id).filter((task) => task.done !== true);
+    const newState = setValue(state, keyNames, newTaskItems);
+    dom.style.willChange = "";
+    rafTask.done = true;
+    return onfinish ? onfinish(newState, rafTask) : newState;
+  };
+  return (dispatch) => {
+    dispatch((state) => {
+      const taskItems = getValue(state, keyNames, []).filter((task) => task.id !== id2).filter((task) => task.done !== true);
+      const dom = document.getElementById(id2);
+      if (dom) dom.style.willChange = "transform";
+      return setValue(state, keyNames, taskItems.concat({
+        id: id2,
+        action,
+        extension: properties
+      }));
+    });
+  };
 };
 const getScrollMargin = function(e) {
   const el2 = e.currentTarget;
@@ -640,6 +745,40 @@ const action_throwAction = (state) => {
 const action_toggleFinalize = (state) => {
   return setValue(state, ["finalize"], !state.finalize);
 };
+const action_move = (state) => {
+  const effect = effect_rAFMoveTo({
+    id: "raf",
+    keyNames: ["tasks"],
+    before: { top: 0, left: 0 },
+    after: { top: 0, left: 100 },
+    speed: 1e3,
+    onfinish: (state2, rafTask) => {
+      console.log("complete " + rafTask.currentTime);
+      return {
+        ...state2,
+        tasks: state2.tasks.filter((task) => task.id !== rafTask.id).filter((task) => task.done !== true)
+      };
+    }
+  });
+  return [state, effect];
+};
+const action_setProperties = (state) => {
+  const effect = effect_rAFProperties({
+    id: "rafP",
+    keyNames: ["tasks"],
+    properties: [{
+      name: "font-size",
+      before: 1,
+      after: 3,
+      unit: "rem"
+    }],
+    speed: 1e3,
+    onfinish: (state2, rafTask) => {
+      return state2;
+    }
+  });
+  return [state, effect];
+};
 const action_scroll = (state, e) => {
   return setValue(state, ["margin"], getScrollMargin(e));
 };
@@ -653,7 +792,8 @@ addEventListener("load", () => {
     throwMsg: "",
     node: null,
     finalize: false,
-    margin: { top: 0, left: 0, right: 0, bottom: 0 }
+    margin: { top: 0, left: 0, right: 0, bottom: 0 },
+    tasks: []
   };
   app({
     node: document.getElementById("app"),
@@ -681,13 +821,16 @@ addEventListener("load", () => {
         onclick: (state2) => [state2, effect_resumeThrowMessage("msg")]
       },
       "resume"
-    ))), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page4" }, /* @__PURE__ */ h("h2", null, "Subscriptions example"), /* @__PURE__ */ h("h2", null, "subscription_nodesCleanup"), /* @__PURE__ */ h("button", { type: "button", onclick: action_throwAction }, "throw action"), /* @__PURE__ */ h("button", { type: "button", onclick: action_toggleFinalize }, "toggle object"), state.finalize ? /* @__PURE__ */ h("span", { id: "dom" }, "object") : null), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page5" }, /* @__PURE__ */ h("h2", null, "DOM / Event example"), /* @__PURE__ */ h("h3", null, "getScrollMargin"), /* @__PURE__ */ h("div", { id: "parent", onscroll: action_scroll }, /* @__PURE__ */ h("div", { id: "child" }, "スクロールしてください")), /* @__PURE__ */ h("div", null, JSON.stringify(state.margin))))),
-    subscriptions: (state) => subscription_nodesCleanup([{
-      id: "dom",
-      finalize: (state2) => {
-        alert("finalize");
-        return state2;
-      }
-    }])
+    )), /* @__PURE__ */ h("h3", null, "effect_rAFMoveTo"), /* @__PURE__ */ h("button", { state, onclick: action_move, id: "raf" }, "move"), /* @__PURE__ */ h("button", { state, onclick: action_setProperties, id: "rafP" }, "font")), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page4" }, /* @__PURE__ */ h("h2", null, "Subscriptions example"), /* @__PURE__ */ h("h2", null, "subscription_nodesCleanup"), /* @__PURE__ */ h("button", { type: "button", onclick: action_throwAction }, "throw action"), /* @__PURE__ */ h("button", { type: "button", onclick: action_toggleFinalize }, "toggle object"), state.finalize ? /* @__PURE__ */ h("span", { id: "dom" }, "object") : null), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page5" }, /* @__PURE__ */ h("h2", null, "DOM / Event example"), /* @__PURE__ */ h("h3", null, "getScrollMargin"), /* @__PURE__ */ h("div", { id: "parent", onscroll: action_scroll }, /* @__PURE__ */ h("div", { id: "child" }, "スクロールしてください")), /* @__PURE__ */ h("div", null, JSON.stringify(state.margin))))),
+    subscriptions: (state) => [
+      ...subscription_nodesCleanup([{
+        id: "dom",
+        finalize: (state2) => {
+          alert("finalize");
+          return state2;
+        }
+      }]),
+      subscription_rAFManager(state, ["tasks"])
+    ]
   });
 });

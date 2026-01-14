@@ -694,8 +694,8 @@ export const subscription_nodesCleanup = function <S>(
  * IDに一致するDOMが存在する場合、イベント時にがセットされます
  * 
  * @template S
- * @param   {string[]} keyNames - 文字配列までのパス
- * @param   {} nodes - 監視対象ノード定義配列
+ * @param   {string[]}        keyNames - 文字配列までのパス
+ * @param   {LifecycleNode[]} nodes    - 監視対象ノード定義配列
  * @returns {Subscription<S>[]}
  */
 export const subscription_nodesLifecycleByIds = function <S> (
@@ -737,6 +737,307 @@ export const subscription_nodesLifecycleByIds = function <S> (
 		,
 		node
 	])
+}
+
+// ========== ========== ========== ========== ==========
+// rAF (Animation System)
+// ========== ========== ========== ========== ==========
+
+// ---------- ---------- ---------- ---------- ----------
+// interface RAFTask
+// ---------- ---------- ---------- ---------- ----------
+/**
+ * @template S
+ * @type {Object} RAFTask
+ * @property {string}                                                id           - ユニークID (DOMのidと同一)
+ * @property {(state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]} action       - アクション
+ * @property {number}                                               [startTime]   - 開始時間 (省略ですぐ開始)
+ * @property {number}                                               [currentTime] - 現在の時間 (コールバック用)
+ * @property {number}                                               [deltaTime]   - 前回のアクションからの経過時間
+ * @property {number}                                               [elapsedTime] - startTime からの経過時間
+ * @property {boolean}                                              [paused]      - 一時停止フラグ
+ * @property {number}                                               [priority]    - アクションの優先順位
+ * @property {any}                                                  [extension]   - 拡張用のプロパティ
+ * @property {boolean}                                              [done]        - 終了判定
+ */
+export interface RAFTask <S> {
+	id          : string
+	action      : (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]
+	startTime?  : number
+	currentTime?: number
+	deltaTime?  : number
+	elapsedTime?: number
+	paused?     : boolean
+	priority?   : number
+	extension?  : any
+	done?       : boolean
+}
+
+// ---------- ---------- ---------- ---------- ----------
+// subscription_rAFManager
+// ---------- ---------- ---------- ---------- ----------
+/**
+ * requestAnimationFrame を利用し、RAFTask をフレームごとに実行するサブスクリプション
+ * 
+ * - state から RAFTask 配列を取得
+ * - 対応する DOM が存在するタスクのみ実行
+ * - priority 順にソートして処理
+ * - startTime による遅延開始対応
+ * - deltaTime / elapsedTime を自動計算
+ * - state へ反映するかどうかは action の処理
+ *
+ * @template S
+ * @param   {S}        state    - ステート
+ * @param   {string[]} keyNames - RAFTask 配列までのパス
+ * @returns {Subscription<S>}
+ */
+export const subscription_rAFManager = function <S>(
+	state: S,
+	keyNames: string[]
+): Subscription<S> {
+	const sortFn = (a: RAFTask<S>, b: RAFTask<S>) => (b.priority ?? 0) - (a.priority ?? 0)
+	const tasks = getValue(state, keyNames, [] as RAFTask<S>[])
+		.filter(task => document.getElementById(task.id))
+		.filter(task => task.done !== true)
+		.sort(sortFn)
+
+	return [
+		(dispatch: Dispatch<S>, payload: RAFTask<S>[]) => {
+			if (payload.length === 0) return () => {}
+
+			let rafId = 0
+
+			const loop = (now: number) => {
+				dispatch((state: S) => {
+					const tasks = getValue(state, keyNames, [] as RAFTask<S>[])
+						.filter(task => document.getElementById(task.id))
+						.filter(task => task.done !== true)
+						.sort(sortFn)
+
+					const newTasks: RAFTask<S>[] = tasks.flatMap(task => {
+						if (task.paused) return [task]
+
+						const newTask: RAFTask<S> = {
+							...task,
+							startTime  : task.startTime ?? now,
+							currentTime: now,
+							deltaTime  : task.currentTime ? now - task.currentTime : 0,
+							elapsedTime: now - (task.startTime ?? now)
+						}
+
+						if (now >= task.startTime!) {
+							dispatch([task.action, newTask])
+						}
+						return [newTask]
+					})
+					return setValue(state, keyNames, newTasks)
+				})
+				rafId = requestAnimationFrame(loop)
+			}
+
+			rafId = requestAnimationFrame(loop)
+			return () => cancelAnimationFrame(rafId)
+		},
+		tasks
+	]
+}
+
+// ---------- ---------- ---------- ---------- ----------
+// effect_rAFMoveTo
+// ---------- ---------- ---------- ---------- ----------
+/**
+ * scription_rAFManager を利用したアニメーションムーブエフェクト
+ * 
+ * - DOM の translate を使って移動
+ * - 進捗率に基づき毎フレーム transform を更新
+ * - 終了時に onfinish を呼び出す
+ * - will-change を使って GPU レイヤーを活用
+ * - 終了時の translate / left / top 設定は onfinish で処理
+ * - onfinish での処理を考慮し、rafTask.extension には { before, after } が格納されます
+ * 
+ * @template S
+ * @param   {string}                                                id       - ユニークID (DOM の id と一致) 
+ * @param   {string[]}                                              keyNames - RAFTask 配列までのパス
+ * @param   {{left: number, top: number}}                           before   - 開始位置
+ * @param   {{left: number, top: number}}                           after    - 終了位置
+ * @param   {number}                                                speed    - 移動完了までの時間 (ms)
+ * @param   {(state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]} onfinish - 移動完了時に呼ばれるイベント
+ * @returns {(dispatch: Dispatch<S>) => void}
+ */
+export const effect_rAFMoveTo = function <S> ({
+	id,
+	keyNames,
+	before,
+	after,
+	speed,
+	onfinish
+}: {
+	id      : string,
+	keyNames: string[],
+	before  : {
+		top : number
+		left: number
+	},
+	after   : {
+		top : number
+		left: number
+	},
+	speed   : number,
+	onfinish: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]
+}): (dispatch: Dispatch<S>) => void {
+	const dx = after.left - before.left
+	const dy = after.top  - before.top
+
+	// action
+	const action = (state: S, rafTask: RAFTask<S>) => {
+		const dom = document.getElementById(rafTask.id)
+		if (!dom) return state
+
+		// progress
+		const progress = Math.min(1, (rafTask.elapsedTime ?? 0) / Math.max(1, speed))
+
+		// set property
+		dom.style.transform = `translate(${ dx * progress }px, ${ dy * progress }px)`
+
+		// next
+		if (progress < 1) return state
+
+		// newState
+		const newTaskItems = getValue(state, keyNames, [] as RAFTask<S>[])
+			.filter(task => task.id !== rafTask.id)
+			.filter(task => task.done !== true)
+
+		const newState = setValue(state, keyNames, newTaskItems)
+
+		// releasre gpu layer
+		dom.style.willChange = ""
+
+		// finish
+		rafTask.done = true
+
+		return onfinish
+			? onfinish(newState, rafTask)
+			: newState
+	}
+
+	// result
+	return ((dispatch: Dispatch<S>) => {
+		dispatch((state: S) => {
+			const taskItems = getValue(state, keyNames, [] as RAFTask<S>[])
+				.filter(task => task.id !== id)
+				.filter(task => task.done !== true)
+
+			// set gpu layer
+			const dom = document.getElementById(id)
+			if (dom) dom.style.willChange = "transform"
+
+			return setValue(state, keyNames, taskItems.concat({
+				id       : id,
+				action   : action,
+				extension: { before, after }
+			}))
+		})
+	})
+}
+
+// ---------- ---------- ---------- ---------- ----------
+// effect_rAFProperties
+// ---------- ---------- ---------- ---------- ----------
+/**
+ * @type {Object} CSSProperty
+ * @property {string} name   - プロパティ名
+ * @property {number} before - 変更前の数値
+ * @property {number} after  - 変更後の数値
+ * @property {string} [unit] - 単位
+ */
+
+/**
+ * scription_rAFManager を利用したCSS値変更エフェクト
+ * 
+ * - 進捗状況に基づき毎フレーム CSS値を変更
+ * - 終了時に onfinish を呼び出す
+ * - onfinish での処理を考慮し、rafTask.extension には properties が格納されます
+ * 
+ * @template S
+ * @param   {string}                                                id         - ユニークID (DOM の id と一致) 
+ * @param   {string[]}                                              keyNames   - RAFTask 配列までのパス
+ * @param   {CSSProperty[]}                                         properties - 変更するCSS値 
+ * @param   {number}                                                speed      - 移動完了までの時間 (ms)
+ * @param   {(state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]} onfinish   - 移動完了時に呼ばれるイベント
+ * @returns {(dispatch: Dispatch<S>) => void}
+ */
+export const effect_rAFProperties = function <S>({
+	id,
+	keyNames,
+	properties,
+	speed,
+	onfinish
+}: {
+	id        : string,
+	keyNames  : string[],
+	properties: {
+		name  : string
+		before: number
+		after : number
+		unit? : string
+	}[],
+	speed     : number,
+	onfinish  : (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]
+}): (dispatch : Dispatch<S>) => void {
+
+	// action
+	const action = (state: S, rafTask: RAFTask<S>) => {
+		const dom = document.getElementById(rafTask.id)
+		if (!dom) return state
+
+		// progress
+		const progress = Math.min(1, (rafTask.elapsedTime ?? 0) / Math.max(1, speed))
+
+		// set css properties
+		properties.forEach(p => {
+			const val = `${ p.before + (p.after - p.before) * progress }${ p.unit ?? "" }`
+			dom.style.setProperty(p.name, val)
+		})
+
+		// next
+		if (progress < 1) return state
+
+		// newState
+		const newTaskItems = getValue(state, keyNames, [] as RAFTask<S>[])
+			.filter(task => task.id !== rafTask.id)
+			.filter(task => task.done !== true)
+
+		const newState = setValue(state, keyNames, newTaskItems)
+
+		// release gpu layer
+		dom.style.willChange = ""
+
+		// finish
+		rafTask.done = true
+
+		return onfinish
+			? onfinish(newState, rafTask)
+			: newState
+	}
+
+	// result
+	return (dispatch: Dispatch<S>) => {
+		dispatch((state: S) => {
+			const taskItems = getValue(state, keyNames, [] as RAFTask<S>[])
+				.filter(task => task.id !== id)
+				.filter(task => task.done !== true)
+
+			// set gpu layer
+			const dom = document.getElementById(id)
+			if (dom) dom.style.willChange = "transform"
+
+			return setValue(state, keyNames, taskItems.concat({
+				id,
+				action,
+				extension: properties
+			}))
+		})
+	}
 }
 
 // ========== ========== ========== ========== ==========

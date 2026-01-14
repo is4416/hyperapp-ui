@@ -2,7 +2,7 @@
 // import 
 // ---------- ---------- ---------- ---------- ----------
 
-import { app, VNode } from "hyperapp"
+import { app, VNode, Dispatch } from "hyperapp"
 import h from "hyperapp-jsx-pragma"
 import {
 	setValue, getValue,
@@ -10,6 +10,8 @@ import {
 	effect_initializeNodes, effect_setTimedValue, effect_throwMessage, effect_pauseThrowMessage, effect_resumeThrowMessage,
 	subscription_nodesCleanup,
 	ScrollMargin, getScrollMargin,
+	RAFTask, subscription_rAFManager, effect_rAFMoveTo,
+	effect_rAFProperties
 } from "./hyperapp-ui"
 
 // ---------- ---------- ---------- ---------- ----------
@@ -26,6 +28,7 @@ interface State {
 	node     : VNode<State> | null
 	finalize : boolean
 	margin   : ScrollMargin
+	tasks    : RAFTask<State>[]
 }
 
 // ---------- ---------- ---------- ---------- ----------
@@ -87,6 +90,55 @@ const action_toggleFinalize = (state: State) => {
 }
 
 // ---------- ---------- ---------- ---------- ----------
+// action_move
+// ---------- ---------- ---------- ---------- ----------
+
+const action_move = (state: State) => {
+	const effect = effect_rAFMoveTo({
+		id      : "raf",
+		keyNames: ["tasks"],
+		before  : { top: 0, left: 0 },
+		after   : { top: 0, left: 100 },
+		speed   : 1000,
+		onfinish: (state: State, rafTask: RAFTask<State>) => {
+			console.log("complete " + rafTask.currentTime)
+			return {
+				...state,
+				tasks: state.tasks
+					.filter(task => task.id !== rafTask.id)
+					.filter(task => task.done !== true)
+			}
+			return state
+		}
+	})
+
+	return [state, effect]
+}
+
+// ---------- ---------- ---------- ---------- ----------
+// action_setProperties
+// ---------- ---------- ---------- ---------- ----------
+
+const action_setProperties = (state: State) => {
+	const effect = effect_rAFProperties({
+		id        : "rafP",
+		keyNames  : ["tasks"],
+		properties: [{
+			name  : "font-size",
+			before: 1,
+			after : 3,
+			unit  : "rem"
+		}],
+		speed   : 1000,
+		onfinish: (state: State, rafTask: RAFTask<State>) => {
+			return state
+		}
+	})
+
+	return [state, effect]
+}
+
+// ---------- ---------- ---------- ---------- ----------
 // action_scroll
 // ---------- ---------- ---------- ---------- ----------
 
@@ -110,7 +162,8 @@ addEventListener("load", () => {
 		throwMsg : "",
 		node     : null,
 		finalize : false,
-		margin   : { top: 0, left: 0, right: 0, bottom: 0 }
+		margin   : { top: 0, left: 0, right: 0, bottom: 0 },
+		tasks    : []
 	}
 
 	// app
@@ -186,6 +239,10 @@ addEventListener("load", () => {
 							onclick = {(state: State) => [state, effect_resumeThrowMessage("msg")]}
 						>resume</button>
 					</div>
+
+					<h3>effect_rAFMoveTo</h3>
+					<button state={state} onclick={action_move} id="raf">move</button>
+					<button state={state} onclick={action_setProperties} id="rafP">font</button>
 				</Route>
 
 				{/* *** page4: Subscriptions *** */}
@@ -211,12 +268,15 @@ addEventListener("load", () => {
 			</div>
 		</main>),
 
-		subscriptions: (state: State) => subscription_nodesCleanup([{
-			id      : "dom",
-			finalize: (state: State) => {
-				alert("finalize")
-				return state
-			}
-		}])
+		subscriptions: (state: State) => [
+			...subscription_nodesCleanup([{
+				id      : "dom",
+				finalize: (state: State) => {
+					alert("finalize")
+					return state
+				}
+			}]),
+			subscription_rAFManager(state, ["tasks"])
+		]
 	})
 })
