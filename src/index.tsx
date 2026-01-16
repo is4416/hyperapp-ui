@@ -5,13 +5,16 @@
 import { app, VNode, Dispatch } from "hyperapp"
 import h from "hyperapp-jsx-pragma"
 import {
-	setValue, getValue,
-	Route, SelectButton, OptionButton,
-	effect_initializeNodes, effect_setTimedValue, effect_throwMessage, effect_pauseThrowMessage, effect_resumeThrowMessage,
+	setValue, getValue, getLocalState, setLocalState,
+	Route,
+	SelectButton,
+	OptionButton,
+	effect_initializeNodes,
+	effect_setTimedValue,
+	effect_throwMessage, effect_pauseThrowMessage, effect_resumeThrowMessage,
 	subscription_nodesCleanup,
 	ScrollMargin, getScrollMargin,
-	RAFTask, subscription_rAFManager, effect_rAFMoveTo,
-	effect_rAFProperties
+	RAFTask, subscription_rAFManager, CSSProperty, effect_rAFProperties
 } from "./hyperapp-ui"
 
 // ---------- ---------- ---------- ---------- ----------
@@ -94,24 +97,15 @@ const action_toggleFinalize = (state: State) => {
 // ---------- ---------- ---------- ---------- ----------
 
 const action_move = (state: State) => {
-	const effect = effect_rAFMoveTo({
-		id      : "raf",
+	const effect = effect_rAFProperties({
+		id: "raf",
 		keyNames: ["tasks"],
-		before  : { top: 0, left: 0 },
-		after   : { top: 0, left: 100 },
-		speed   : 1000,
-		onfinish: (state: State, rafTask: RAFTask<State>) => {
-			console.log("complete " + rafTask.currentTime)
-			return {
-				...state,
-				tasks: state.tasks
-					.filter(task => task.id !== rafTask.id)
-					.filter(task => task.done !== true)
-			}
-			return state
-		}
+		duration: 1000,
+		properties: [{
+			name : "transform",
+			value: (progress: number) => `translate(${ progress * 5}rem, 0)`
+		}]
 	})
-
 	return [state, effect]
 }
 
@@ -123,14 +117,15 @@ const action_setProperties = (state: State) => {
 	const effect = effect_rAFProperties({
 		id        : "rafP",
 		keyNames  : ["tasks"],
-		properties: [{
-			name  : "font-size",
-			before: 1,
-			after : 3,
-			unit  : "rem"
-		}],
-		speed   : 1000,
-		onfinish: (state: State, rafTask: RAFTask<State>) => {
+		duration  : 1000,
+		properties: [
+			{
+				name : "font-size",
+				value: (progress: number) => `${ 1 + (progress * 3) }rem`
+			}
+		],
+		finish: (state: State, rafTask: RAFTask<State>) => {
+			alert("complete")
 			return state
 		}
 	})
@@ -240,10 +235,10 @@ addEventListener("load", () => {
 						>resume</button>
 					</div>
 
-					<h3>effect_rAFMoveTo</h3>
+					<h3>effect_rAFProperties - transform</h3>
 					<button state={state} onclick={action_move} id="raf">move</button>
 
-					<h3>effect_rAFProperties</h3>
+					<h3>effect_rAFProperties - font-size</h3>
 					<button state={state} onclick={action_setProperties} id="rafP">font</button>
 				</Route>
 

@@ -594,107 +594,94 @@ const subscription_nodesCleanup = function(nodes) {
   ]);
 };
 const subscription_rAFManager = function(state, keyNames) {
-  const sortFn = (a, b) => (b.priority ?? 0) - (a.priority ?? 0);
-  const tasks = getValue(state, keyNames, []).filter((task) => document.getElementById(task.id)).filter((task) => task.done !== true).sort(sortFn);
   return [
     (dispatch, payload) => {
       if (payload.length === 0) return () => {
       };
       let rafId = 0;
-      const loop = (now) => {
+      const action = (now) => {
         dispatch((state2) => {
-          const tasks2 = getValue(state2, keyNames, []).filter((task) => document.getElementById(task.id)).filter((task) => task.done !== true).sort(sortFn);
-          const newTasks = tasks2.flatMap((task) => {
-            if (task.paused) return [task];
+          const tasks = getValue(state2, keyNames, []).sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+          const newTasks = tasks.flatMap((task) => {
+            if (task.paused && !task.resume) {
+              return {
+                ...task,
+                currentTime: task.currentTime,
+                deltaTime: 0
+              };
+            }
+            if (task.isDone) return [];
             const newTask = {
               ...task,
-              startTime: task.startTime ?? now,
+              startTime: task.resume ? (task.startTime ?? now) + (now - (task.currentTime ?? now)) : task.startTime ?? now,
               currentTime: now,
-              deltaTime: task.currentTime ? now - task.currentTime : 0,
-              elapsedTime: now - (task.startTime ?? now)
+              deltaTime: now - (task.currentTime ?? now),
+              paused: false,
+              resume: void 0
             };
-            if (now >= task.startTime) {
-              dispatch([task.action, newTask]);
+            const progress = Math.min(
+              1,
+              (now - (newTask.startTime ?? now)) / Math.max(1, newTask.duration)
+            );
+            if (newTask.startTime !== void 0 && now >= newTask.startTime) dispatch([task.action, newTask]);
+            if (!task.isDone && progress >= 1) {
+              newTask.isDone = true;
+              if (task.finish) dispatch([task.finish, newTask]);
+              return [];
             }
             return [newTask];
           });
           return setValue(state2, keyNames, newTasks);
         });
-        rafId = requestAnimationFrame(loop);
+        rafId = requestAnimationFrame(action);
       };
-      rafId = requestAnimationFrame(loop);
+      rafId = requestAnimationFrame(action);
       return () => cancelAnimationFrame(rafId);
     },
-    tasks
+    // payload
+    getValue(state, keyNames, []).sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
   ];
 };
-const effect_rAFMoveTo = function({
-  id: id2,
-  keyNames,
-  before,
-  after,
-  speed,
-  onfinish
-}) {
-  const dx = after.left - before.left;
-  const dy = after.top - before.top;
+const GPU_LAYER = /* @__PURE__ */ new Set(["transform", "opacity"]);
+const effect_rAFProperties = function(props) {
+  const { id: id2, keyNames, duration, properties, finish } = props;
   const action = (state, rafTask) => {
+    const tasks = getValue(state, keyNames, []).filter((task) => task.id !== rafTask.id).sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
     const dom = document.getElementById(rafTask.id);
-    if (!dom) return state;
-    const progress = Math.min(1, (rafTask.elapsedTime ?? 0) / Math.max(1, speed));
-    dom.style.transform = `translate(${dx * progress}px, ${dy * progress}px)`;
+    if (!dom) {
+      return setValue(state, keyNames, tasks);
+    }
+    const progress = Math.min(
+      1,
+      ((rafTask.currentTime ?? 0) - (rafTask.startTime ?? 0)) / Math.max(1, rafTask.duration)
+    );
+    const list = rafTask.extension.properties;
+    if (list) list.forEach((p) => dom.style.setProperty(p.name, p.value(progress)));
     if (progress < 1) return state;
-    const newTaskItems = getValue(state, keyNames, []).filter((task) => task.id !== rafTask.id).filter((task) => task.done !== true);
-    const newState = setValue(state, keyNames, newTaskItems);
+    rafTask.isDone = true;
     dom.style.willChange = "";
-    rafTask.done = true;
-    return onfinish ? onfinish(newState, rafTask) : newState;
-  };
-  return ((dispatch) => {
-    dispatch((state) => {
-      const taskItems = getValue(state, keyNames, []).filter((task) => task.id !== id2).filter((task) => task.done !== true);
-      const dom = document.getElementById(id2);
-      if (dom) dom.style.willChange = "transform";
-      return setValue(state, keyNames, taskItems.concat({
-        id: id2,
-        action,
-        extension: { before, after }
-      }));
-    });
-  });
-};
-const effect_rAFProperties = function({
-  id: id2,
-  keyNames,
-  properties,
-  speed,
-  onfinish
-}) {
-  const action = (state, rafTask) => {
-    const dom = document.getElementById(rafTask.id);
-    if (!dom) return state;
-    const progress = Math.min(1, (rafTask.elapsedTime ?? 0) / Math.max(1, speed));
-    properties.forEach((p) => {
-      const val = `${p.before + (p.after - p.before) * progress}${p.unit ?? ""}`;
-      dom.style.setProperty(p.name, val);
-    });
-    if (progress < 1) return state;
-    const newTaskItems = getValue(state, keyNames, []).filter((task) => task.id !== rafTask.id).filter((task) => task.done !== true);
-    const newState = setValue(state, keyNames, newTaskItems);
-    dom.style.willChange = "";
-    rafTask.done = true;
-    return onfinish ? onfinish(newState, rafTask) : newState;
+    const newState = setValue(state, keyNames, tasks);
+    return finish ? finish(newState, rafTask) : newState;
   };
   return (dispatch) => {
     dispatch((state) => {
-      const taskItems = getValue(state, keyNames, []).filter((task) => task.id !== id2).filter((task) => task.done !== true);
       const dom = document.getElementById(id2);
-      if (dom) dom.style.willChange = "transform";
-      return setValue(state, keyNames, taskItems.concat({
+      if (dom) {
+        dom.style.willChange = [...new Set(
+          properties.map((p) => p.name).filter((name) => GPU_LAYER.has(name))
+        )].join(",");
+      }
+      const newTask = {
         id: id2,
+        duration,
         action,
-        extension: properties
-      }));
+        extension: { properties }
+      };
+      return setValue(
+        state,
+        keyNames,
+        getValue(state, keyNames, []).filter((task) => task.id !== id2).concat(newTask)
+      );
     });
   };
 };
@@ -746,19 +733,14 @@ const action_toggleFinalize = (state) => {
   return setValue(state, ["finalize"], !state.finalize);
 };
 const action_move = (state) => {
-  const effect = effect_rAFMoveTo({
+  const effect = effect_rAFProperties({
     id: "raf",
     keyNames: ["tasks"],
-    before: { top: 0, left: 0 },
-    after: { top: 0, left: 100 },
-    speed: 1e3,
-    onfinish: (state2, rafTask) => {
-      console.log("complete " + rafTask.currentTime);
-      return {
-        ...state2,
-        tasks: state2.tasks.filter((task) => task.id !== rafTask.id).filter((task) => task.done !== true)
-      };
-    }
+    duration: 1e3,
+    properties: [{
+      name: "transform",
+      value: (progress) => `translate(${progress * 5}rem, 0)`
+    }]
   });
   return [state, effect];
 };
@@ -766,14 +748,15 @@ const action_setProperties = (state) => {
   const effect = effect_rAFProperties({
     id: "rafP",
     keyNames: ["tasks"],
-    properties: [{
-      name: "font-size",
-      before: 1,
-      after: 3,
-      unit: "rem"
-    }],
-    speed: 1e3,
-    onfinish: (state2, rafTask) => {
+    duration: 1e3,
+    properties: [
+      {
+        name: "font-size",
+        value: (progress) => `${1 + progress * 3}rem`
+      }
+    ],
+    finish: (state2, rafTask) => {
+      alert("complete");
       return state2;
     }
   });
@@ -821,7 +804,7 @@ addEventListener("load", () => {
         onclick: (state2) => [state2, effect_resumeThrowMessage("msg")]
       },
       "resume"
-    )), /* @__PURE__ */ h("h3", null, "effect_rAFMoveTo"), /* @__PURE__ */ h("button", { state, onclick: action_move, id: "raf" }, "move"), /* @__PURE__ */ h("h3", null, "effect_rAFProperties"), /* @__PURE__ */ h("button", { state, onclick: action_setProperties, id: "rafP" }, "font")), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page4" }, /* @__PURE__ */ h("h2", null, "Subscriptions example"), /* @__PURE__ */ h("h2", null, "subscription_nodesCleanup"), /* @__PURE__ */ h("button", { type: "button", onclick: action_throwAction }, "throw action"), /* @__PURE__ */ h("button", { type: "button", onclick: action_toggleFinalize }, "toggle object"), state.finalize ? /* @__PURE__ */ h("span", { id: "dom" }, "object") : null), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page5" }, /* @__PURE__ */ h("h2", null, "DOM / Event example"), /* @__PURE__ */ h("h3", null, "getScrollMargin"), /* @__PURE__ */ h("div", { id: "parent", onscroll: action_scroll }, /* @__PURE__ */ h("div", { id: "child" }, "スクロールしてください")), /* @__PURE__ */ h("div", null, JSON.stringify(state.margin))))),
+    )), /* @__PURE__ */ h("h3", null, "effect_rAFProperties - transform"), /* @__PURE__ */ h("button", { state, onclick: action_move, id: "raf" }, "move"), /* @__PURE__ */ h("h3", null, "effect_rAFProperties - font-size"), /* @__PURE__ */ h("button", { state, onclick: action_setProperties, id: "rafP" }, "font")), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page4" }, /* @__PURE__ */ h("h2", null, "Subscriptions example"), /* @__PURE__ */ h("h2", null, "subscription_nodesCleanup"), /* @__PURE__ */ h("button", { type: "button", onclick: action_throwAction }, "throw action"), /* @__PURE__ */ h("button", { type: "button", onclick: action_toggleFinalize }, "toggle object"), state.finalize ? /* @__PURE__ */ h("span", { id: "dom" }, "object") : null), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page5" }, /* @__PURE__ */ h("h2", null, "DOM / Event example"), /* @__PURE__ */ h("h3", null, "getScrollMargin"), /* @__PURE__ */ h("div", { id: "parent", onscroll: action_scroll }, /* @__PURE__ */ h("div", { id: "child" }, "スクロールしてください")), /* @__PURE__ */ h("div", null, JSON.stringify(state.margin))))),
     subscriptions: (state) => [
       ...subscription_nodesCleanup([{
         id: "dom",

@@ -29,7 +29,6 @@ JSX を使用する場合は `hyperapp-jsx-pragma` を前提としています�
 - [subscription_nodesCleanup](#subscription_nodescleanup)
 - [subscription_nodesLifecycleByIds](#subscription_nodeslifecyclebyids)
 - [subscription_rAFManager](#subscription_rafmanager)
-- [effect_rAFMoveTo](#effect_rafmoveto)
 - [effect_rAFProperties](#effect_rafproperties)
 - [getScrollMargin](#getscrollmargin)
 
@@ -55,7 +54,6 @@ Hyperapp はステートの形に制約がないため、コンポーネント�
 
 - `subscription_nodesCleanup` : DOM アンマウント時にガベージコレクション風の終了処理
 - `subscription_rAFManager` : RAFTask 配列をフレームごとに実行
-- `effect_rAFMoveTo`        : CSS translate を用いた DOM 移動
 - `effect_rAFProperties`    : CSS プロパティを RAF で段階的に設定
 
 ## source file / ソースファイル
@@ -146,9 +144,6 @@ DOM 消失時にクリーンアップ処理を実行。
 
 ### subscription_rAFManager
 RAFTask 配列をフレームごとに実行するサブスクリプション。
-
-### effect_rAFMoveTo
-DOM 要素を座標間でなめらかに移動。
 
 ### effect_rAFProperties
 CSS プロパティをフレーム単位で段階的に変更。
