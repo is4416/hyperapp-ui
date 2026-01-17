@@ -139,8 +139,10 @@ DOM 消失時にクリーンアップ処理を実行。
 
 ## (6) rAF / Animation System
 
+[詳細説明](animation-system.md)
+
 ### interface RAFTask
-アニメーションタスクを定義。`paused` / `priority` / `extension` を利用可能。
+アニメーションタスクを定義。
 
 ### subscription_rAFManager
 RAFTask 配列をフレームごとに実行するサブスクリプション。
