@@ -695,6 +695,46 @@ const getScrollMargin = function(e) {
     bottom: el2.scrollHeight - (el2.clientHeight + el2.scrollTop)
   };
 };
+const progress_easing = {
+  // basic
+  linear: (t) => t,
+  easeInQuad: (t) => t * t,
+  easeOutQuad: (t) => 1 - (1 - t) * (1 - t),
+  easeInOutQuad: (t) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2,
+  // cubic
+  easeInCubic: (t) => t * t * t,
+  easeOutCubic: (t) => 1 - Math.pow(1 - t, 3),
+  easeInOutCubic: (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+  // quart
+  easeInQuart: (t) => t * t * t * t,
+  easeOutQuart: (t) => 1 - Math.pow(1 - t, 4),
+  easeInOutQuart: (t) => t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2,
+  // back (跳ねる)
+  easeOutBack: (t) => {
+    const c1 = 1.70158;
+    const c3 = c1 + 1;
+    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+  },
+  // bounce
+  easeOutBounce: (t) => {
+    const n1 = 7.5625;
+    const d1 = 2.75;
+    if (t < 1 / d1) {
+      return n1 * t * t;
+    } else if (t < 2 / d1) {
+      return n1 * (t -= 1.5 / d1) * t + 0.75;
+    } else if (t < 2.5 / d1) {
+      return n1 * (t -= 2.25 / d1) * t + 0.9375;
+    } else {
+      return n1 * (t -= 2.625 / d1) * t + 0.984375;
+    }
+  },
+  // elastic
+  easeOutElastic: (t) => {
+    const c4 = 2 * Math.PI / 3;
+    return t === 0 ? 0 : t === 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+  }
+};
 const action_reset = (state) => ({
   selected: [],
   group0: "",
@@ -704,7 +744,8 @@ const action_reset = (state) => ({
   throwMsg: "",
   node: null,
   finalize: false,
-  margin: { top: 0, left: 0, right: 0, bottom: 0 }
+  margin: { top: 0, left: 0, right: 0, bottom: 0 },
+  easing: "linear"
 });
 const action_effectButtonClick = (state) => {
   const label = /* @__PURE__ */ h("label", null, "Label");
@@ -739,10 +780,25 @@ const action_move = (state) => {
     duration: 1e3,
     properties: [{
       name: "transform",
-      value: (progress) => `translate(${progress * 5}rem, 0)`
-    }]
+      value: (progress) => {
+        const fn = progress_easing[state.easing];
+        return `translate(${fn(progress) * 10}rem, 0)`;
+      }
+    }],
+    finish: (state2, rafTask) => {
+      const dom = document.getElementById(rafTask.id);
+      if (!dom) return state2;
+      setTimeout(() => {
+        dom.style.transform = "translate(0, 0)";
+      }, 1e3);
+      return state2;
+    }
   });
   return [state, effect];
+};
+const action_setEasing = (state, e) => {
+  const element = e.currentTarget;
+  return setValue(state, ["easing"], element.value);
 };
 const action_setProperties = (state) => {
   const effect = effect_rAFProperties({
@@ -753,10 +809,19 @@ const action_setProperties = (state) => {
       {
         name: "font-size",
         value: (progress) => `${1 + progress * 3}rem`
+      },
+      {
+        name: "margin",
+        value: (progress) => `0.5rem 0 0 ${2 + progress * 5}rem`
       }
     ],
     finish: (state2, rafTask) => {
-      alert("complete");
+      const dom = document.getElementById(rafTask.id);
+      if (!dom) return state2;
+      setTimeout(() => {
+        dom.style.fontSize = "1rem";
+        dom.style.margin = "0.5rem 0 0 2rem";
+      }, 1e3);
       return state2;
     }
   });
@@ -766,6 +831,13 @@ const action_scroll = (state, e) => {
   return setValue(state, ["margin"], getScrollMargin(e));
 };
 addEventListener("load", () => {
+  const easingList = (() => {
+    const r = [];
+    for (const p in progress_easing) {
+      r.push(p);
+    }
+    return r;
+  })();
   const param = {
     selected: [],
     group0: "",
@@ -776,7 +848,8 @@ addEventListener("load", () => {
     node: null,
     finalize: false,
     margin: { top: 0, left: 0, right: 0, bottom: 0 },
-    tasks: []
+    tasks: [],
+    easing: "linear"
   };
   app({
     node: document.getElementById("app"),
@@ -804,7 +877,7 @@ addEventListener("load", () => {
         onclick: (state2) => [state2, effect_resumeThrowMessage("msg")]
       },
       "resume"
-    )), /* @__PURE__ */ h("h3", null, "effect_rAFProperties - transform"), /* @__PURE__ */ h("button", { state, onclick: action_move, id: "raf" }, "move"), /* @__PURE__ */ h("h3", null, "effect_rAFProperties - font-size"), /* @__PURE__ */ h("button", { state, onclick: action_setProperties, id: "rafP" }, "font")), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page4" }, /* @__PURE__ */ h("h2", null, "Subscriptions example"), /* @__PURE__ */ h("h2", null, "subscription_nodesCleanup"), /* @__PURE__ */ h("button", { type: "button", onclick: action_throwAction }, "throw action"), /* @__PURE__ */ h("button", { type: "button", onclick: action_toggleFinalize }, "toggle object"), state.finalize ? /* @__PURE__ */ h("span", { id: "dom" }, "object") : null), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page5" }, /* @__PURE__ */ h("h2", null, "DOM / Event example"), /* @__PURE__ */ h("h3", null, "getScrollMargin"), /* @__PURE__ */ h("div", { id: "parent", onscroll: action_scroll }, /* @__PURE__ */ h("div", { id: "child" }, "スクロールしてください")), /* @__PURE__ */ h("div", null, JSON.stringify(state.margin))))),
+    )), /* @__PURE__ */ h("h2", null, "rAF / Animation System"), /* @__PURE__ */ h("h3", null, "effect_rAFProperties - transform"), /* @__PURE__ */ h("button", { state, onclick: action_move, id: "raf" }, state.easing), /* @__PURE__ */ h("br", null), /* @__PURE__ */ h("select", { onchange: action_setEasing }, easingList.map((p) => /* @__PURE__ */ h("option", null, p))), /* @__PURE__ */ h("h3", null, "effect_rAFProperties - font-size"), /* @__PURE__ */ h("button", { state, onclick: action_setProperties, id: "rafP" }, "font")), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page4" }, /* @__PURE__ */ h("h2", null, "Subscriptions example"), /* @__PURE__ */ h("h2", null, "subscription_nodesCleanup"), /* @__PURE__ */ h("button", { type: "button", onclick: action_throwAction }, "throw action"), /* @__PURE__ */ h("button", { type: "button", onclick: action_toggleFinalize }, "toggle object"), state.finalize ? /* @__PURE__ */ h("span", { id: "dom" }, "object") : null), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page5" }, /* @__PURE__ */ h("h2", null, "DOM / Event example"), /* @__PURE__ */ h("h3", null, "getScrollMargin"), /* @__PURE__ */ h("div", { id: "parent", onscroll: action_scroll }, /* @__PURE__ */ h("div", { id: "child" }, "スクロールしてください")), /* @__PURE__ */ h("div", null, JSON.stringify(state.margin))))),
     subscriptions: (state) => [
       ...subscription_nodesCleanup([{
         id: "dom",

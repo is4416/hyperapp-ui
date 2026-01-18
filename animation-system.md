@@ -79,3 +79,6 @@ before / after 形式ではなく、進捗状況により CSS 値を出力させ
 
 progress は、0から1までの数値を返します  
 value の関数を自由に決めることができるため、easing 処理なども実装できます  
+
+easing のためのプリセットも、別ファイルで作成してみました  
+[progress_easing.ts](src/progress_easing.ts)

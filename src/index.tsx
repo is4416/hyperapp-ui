@@ -16,6 +16,7 @@ import {
 	ScrollMargin, getScrollMargin,
 	RAFTask, subscription_rAFManager, CSSProperty, effect_rAFProperties
 } from "./hyperapp-ui"
+import { progress_easing } from "./progress_easing"
 
 // ---------- ---------- ---------- ---------- ----------
 // State
@@ -32,6 +33,7 @@ interface State {
 	finalize : boolean
 	margin   : ScrollMargin
 	tasks    : RAFTask<State>[]
+	easing   : keyof typeof progress_easing
 }
 
 // ---------- ---------- ---------- ---------- ----------
@@ -48,6 +50,7 @@ const action_reset = (state: State) => ({
 	node     : null,
 	finalize : false,
 	margin   : { top: 0, left: 0, right: 0, bottom: 0 },
+	easing   : "linear"
 })
 
 // ---------- ---------- ---------- ---------- ----------
@@ -101,12 +104,35 @@ const action_move = (state: State) => {
 		id: "raf",
 		keyNames: ["tasks"],
 		duration: 1000,
+
 		properties: [{
 			name : "transform",
-			value: (progress: number) => `translate(${ progress * 5}rem, 0)`
-		}]
+			value: (progress: number) => {
+				const fn = progress_easing[state.easing]
+				return `translate(${ fn(progress) * 10}rem, 0)`
+			}
+		}],
+
+		finish: (state: State, rafTask: RAFTask<State>) => {
+			const dom = document.getElementById(rafTask.id)
+			if (!dom) return state
+			setTimeout(() => {
+				dom.style.transform = "translate(0, 0)"
+			}, 1000)
+			return state
+		}
 	})
+
 	return [state, effect]
+}
+
+// ---------- ---------- ---------- ---------- ----------
+// action_setEasing
+// ---------- ---------- ---------- ---------- ----------
+
+const action_setEasing = (state: State, e: Event) => {
+	const element = e.currentTarget as HTMLSelectElement
+	return setValue(state, ["easing"], element.value)
 }
 
 // ---------- ---------- ---------- ---------- ----------
@@ -122,10 +148,20 @@ const action_setProperties = (state: State) => {
 			{
 				name : "font-size",
 				value: (progress: number) => `${ 1 + (progress * 3) }rem`
+			},
+			{
+				name: "margin",
+				value: (progress: number) => `0.5rem 0 0 ${ 2 + progress * 5}rem`
 			}
 		],
+
 		finish: (state: State, rafTask: RAFTask<State>) => {
-			alert("complete")
+			const dom = document.getElementById(rafTask.id)
+			if (!dom) return state
+			setTimeout(() => {
+				dom.style.fontSize = "1rem"
+				dom.style.margin = "0.5rem 0 0 2rem"
+			}, 1000)
 			return state
 		}
 	})
@@ -147,6 +183,15 @@ const action_scroll = (state: State, e: Event) => {
 
 addEventListener("load", () => {
 
+	// progress_easing
+	const easingList: string[] = (() => {
+		const r: string[] = []
+		for (const p in progress_easing) {
+			r.push(p)
+		}
+		return r
+	})()
+
 	// State
 	const param: State = {
 		selected : [],
@@ -158,7 +203,8 @@ addEventListener("load", () => {
 		node     : null,
 		finalize : false,
 		margin   : { top: 0, left: 0, right: 0, bottom: 0 },
-		tasks    : []
+		tasks    : [],
+		easing   : "linear"
 	}
 
 	// app
@@ -235,8 +281,13 @@ addEventListener("load", () => {
 						>resume</button>
 					</div>
 
+					<h2>rAF / Animation System</h2>
+
 					<h3>effect_rAFProperties - transform</h3>
-					<button state={state} onclick={action_move} id="raf">move</button>
+					<button state={state} onclick={action_move} id="raf">{ state.easing }</button><br/>
+					<select onchange={action_setEasing}>{
+						easingList.map(p => (<option>{p}</option>))
+					}</select>
 
 					<h3>effect_rAFProperties - font-size</h3>
 					<button state={state} onclick={action_setProperties} id="rafP">font</button>

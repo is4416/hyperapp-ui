@@ -1,11 +1,11 @@
 # hyperapp-ui
 
-HyperappでのUI構築を支援する、再利用可能なコンポーネントと状態操作ユーティリティです。
+HyperappでのUI構築を支援する、再利用可能なコンポーネントと状態操作ユーティリティです。  
 Reusable UI components and state management utilities for Hyperapp.
 
 [example](https://is4416.github.io/hyperapp-ui/)
 
-本ライブラリは **イミュータブルなステート更新** と **シンプルな副作用管理** を前提として設計されています。
+本ライブラリは **イミュータブルなステート更新** と **シンプルな副作用管理** を前提として設計されています。  
 JSX を使用する場合は `hyperapp-jsx-pragma` を前提としています。
 
 ## Functions / 関数リスト
