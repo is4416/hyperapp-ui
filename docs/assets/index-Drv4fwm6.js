@@ -473,41 +473,6 @@ const OptionButton = function(props, children) {
     onclick: action
   }, children);
 };
-const effect_initializeNodes = function(nodes) {
-  const done = /* @__PURE__ */ new Set();
-  return (dispatch) => {
-    nodes.forEach((node) => {
-      if (done.has(node.id)) return;
-      done.add(node.id);
-      const element = document.getElementById(node.id);
-      if (element) dispatch([node.event, element]);
-    });
-  };
-};
-const effect_setTimedValue = function(keyNames, id2, timeout, value, reset = null) {
-  const NO_TIMER = 0;
-  return (dispatch) => {
-    dispatch((state) => {
-      const { timerID } = getLocalState(state, id2, { timerID: NO_TIMER });
-      if (timerID !== NO_TIMER) clearTimeout(timerID);
-      return setLocalState(
-        setValue(state, keyNames, value),
-        id2,
-        {
-          timerID: setTimeout(() => {
-            dispatch((state2) => setLocalState(
-              setValue(state2, keyNames, reset),
-              id2,
-              {
-                timerID: NO_TIMER
-              }
-            ));
-          }, Math.max(0, timeout))
-        }
-      );
-    });
-  };
-};
 const action_throwMessageTick = function(keyNames, id2, text2, interval) {
   const NO_TIMER = 0;
   return (state) => {
@@ -539,7 +504,7 @@ const action_throwMessageTick = function(keyNames, id2, text2, interval) {
     ];
   };
 };
-const effect_throwMessage = function(keyNames, id2, text2, interval) {
+const effect_throwMessageStart = function(keyNames, id2, text2, interval) {
   return (dispatch) => {
     dispatch((state) => setLocalState(state, id2, {
       keyNames,
@@ -551,12 +516,12 @@ const effect_throwMessage = function(keyNames, id2, text2, interval) {
     dispatch(action_throwMessageTick(keyNames, id2, text2, interval));
   };
 };
-const effect_pauseThrowMessage = function(id2) {
+const effect_throwMessagePause = function(id2) {
   return (dispatch) => {
     dispatch((state) => setLocalState(state, id2, { paused: true }));
   };
 };
-const effect_resumeThrowMessage = function(id2) {
+const effect_throwMessageResume = function(id2) {
   return (dispatch) => {
     dispatch((state) => setLocalState(state, id2, { paused: false }));
     dispatch((state) => {
@@ -570,45 +535,23 @@ const effect_resumeThrowMessage = function(id2) {
     });
   };
 };
-const subscription_nodesCleanup = function(nodes) {
-  const key = `local_key_nodesCleanup`;
-  return nodes.map((node) => [
-    (dispatch, payload) => {
-      dispatch((state) => {
-        const dom = document.getElementById(payload.id);
-        const keys = [key, payload.id, "initialized"];
-        const initialized = getValue(state, keys, false);
-        if (dom && !initialized) {
-          return setValue(state, keys, true);
-        }
-        if (!dom && initialized) {
-          const newState = setValue(state, keys, false);
-          return payload.finalize(newState);
-        }
-        return state;
-      });
-      return () => {
-      };
-    },
-    node
-  ]);
-};
-const subscription_rAFManager = function(state, keyNames) {
+const subscription_RAFManager = function(state, keyNames) {
   return [
     (dispatch, payload) => {
       if (payload.length === 0) return () => {
       };
       let rafId = 0;
       const action = (now) => {
+        let hasTasks = false;
         dispatch((state2) => {
-          const tasks = getValue(state2, keyNames, []).sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+          const tasks = [...getValue(state2, keyNames, [])].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
           const newTasks = tasks.flatMap((task) => {
             if (task.paused && !task.resume) {
-              return {
+              return [{
                 ...task,
                 currentTime: task.currentTime,
                 deltaTime: 0
-              };
+              }];
             }
             if (task.isDone) return [];
             const newTask = {
@@ -631,46 +574,50 @@ const subscription_rAFManager = function(state, keyNames) {
             }
             return [newTask];
           });
+          hasTasks = newTasks.length > 0;
           return setValue(state2, keyNames, newTasks);
         });
-        rafId = requestAnimationFrame(action);
+        if (hasTasks) rafId = requestAnimationFrame(action);
       };
       rafId = requestAnimationFrame(action);
       return () => cancelAnimationFrame(rafId);
     },
     // payload
-    getValue(state, keyNames, []).sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
+    [...getValue(state, keyNames, [])].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
   ];
 };
 const GPU_LAYER = /* @__PURE__ */ new Set(["transform", "opacity"]);
-const effect_rAFProperties = function(props) {
+const effect_RAFProperties = function(props) {
   const { id: id2, keyNames, duration, properties, finish } = props;
   const action = (state, rafTask) => {
     const tasks = getValue(state, keyNames, []).filter((task) => task.id !== rafTask.id).sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
-    const dom = document.getElementById(rafTask.id);
-    if (!dom) {
-      return setValue(state, keyNames, tasks);
-    }
     const progress = Math.min(
       1,
       ((rafTask.currentTime ?? 0) - (rafTask.startTime ?? 0)) / Math.max(1, rafTask.duration)
     );
     const list = rafTask.extension.properties;
-    if (list) list.forEach((p) => dom.style.setProperty(p.name, p.value(progress)));
+    const elements = list ? Array.from(new Set(
+      list.flatMap((props2) => {
+        const doms = Array.from(document.querySelectorAll(props2.selector));
+        doms.forEach((dom) => {
+          props2.rules.forEach((r) => dom.style.setProperty(r.name, r.value(progress)));
+        });
+        return doms;
+      })
+    )) : [];
     if (progress < 1) return state;
     rafTask.isDone = true;
-    dom.style.willChange = "";
+    elements.forEach((dom) => dom.style.willChange = "");
     const newState = setValue(state, keyNames, tasks);
     return finish ? finish(newState, rafTask) : newState;
   };
   return (dispatch) => {
     dispatch((state) => {
-      const dom = document.getElementById(id2);
-      if (dom) {
-        dom.style.willChange = [...new Set(
-          properties.map((p) => p.name).filter((name) => GPU_LAYER.has(name))
-        )].join(",");
-      }
+      properties.forEach((props2) => {
+        const doms = Array.from(document.querySelectorAll(props2.selector));
+        const val = [...new Set(props2.rules.map((r) => r.name).filter((name) => GPU_LAYER.has(name)))].join(",");
+        doms.forEach((dom) => dom.style.willChange = val);
+      });
       const newTask = {
         id: id2,
         duration,
@@ -683,16 +630,6 @@ const effect_rAFProperties = function(props) {
         getValue(state, keyNames, []).filter((task) => task.id !== id2).concat(newTask)
       );
     });
-  };
-};
-const getScrollMargin = function(e) {
-  const el2 = e.currentTarget;
-  if (!el2) return { top: 0, left: 0, right: 0, bottom: 0 };
-  return {
-    top: el2.scrollTop,
-    left: el2.scrollLeft,
-    right: el2.scrollWidth - (el2.clientWidth + el2.scrollLeft),
-    bottom: el2.scrollHeight - (el2.clientHeight + el2.scrollTop)
   };
 };
 const progress_easing = {
@@ -735,6 +672,74 @@ const progress_easing = {
     return t === 0 ? 0 : t === 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
   }
 };
+const getScrollMargin = function(e) {
+  const el2 = e.currentTarget;
+  if (!el2) return { top: 0, left: 0, right: 0, bottom: 0 };
+  return {
+    top: el2.scrollTop,
+    left: el2.scrollLeft,
+    right: el2.scrollWidth - (el2.clientWidth + el2.scrollLeft),
+    bottom: el2.scrollHeight - (el2.clientHeight + el2.scrollTop)
+  };
+};
+const effect_setTimedValue = function(keyNames, id2, timeout, value, reset = null) {
+  const NO_TIMER = 0;
+  return (dispatch) => {
+    dispatch((state) => {
+      const { timerID } = getLocalState(state, id2, { timerID: NO_TIMER });
+      if (timerID !== NO_TIMER) clearTimeout(timerID);
+      return setLocalState(
+        setValue(state, keyNames, value),
+        id2,
+        {
+          timerID: setTimeout(() => {
+            dispatch((state2) => setLocalState(
+              setValue(state2, keyNames, reset),
+              id2,
+              {
+                timerID: NO_TIMER
+              }
+            ));
+          }, Math.max(0, timeout))
+        }
+      );
+    });
+  };
+};
+const effect_nodesInitialize = function(nodes) {
+  const done = /* @__PURE__ */ new Set();
+  return (dispatch) => {
+    nodes.forEach((node) => {
+      if (done.has(node.id)) return;
+      done.add(node.id);
+      const element = document.getElementById(node.id);
+      if (element) dispatch([node.event, element]);
+    });
+  };
+};
+const subscription_nodesCleanup = function(nodes) {
+  const key = `local_key_nodesCleanup`;
+  return nodes.map((node) => [
+    (dispatch, payload) => {
+      dispatch((state) => {
+        const dom = document.getElementById(payload.id);
+        const keys = [key, payload.id, "initialized"];
+        const initialized = getValue(state, keys, false);
+        if (dom && !initialized) {
+          return setValue(state, keys, true);
+        }
+        if (!dom && initialized) {
+          const newState = setValue(state, keys, false);
+          return payload.finalize(newState);
+        }
+        return state;
+      });
+      return () => {
+      };
+    },
+    node
+  ]);
+};
 const action_reset = (state) => ({
   selected: [],
   group0: "",
@@ -752,7 +757,7 @@ const action_effectButtonClick = (state) => {
   const text2 = Array.from({ length: 40 }).map((_, i) => i).join("");
   return [
     state,
-    effect_initializeNodes([
+    effect_nodesInitialize([
       {
         id: "initTest",
         event: (state2, element) => {
@@ -764,7 +769,7 @@ const action_effectButtonClick = (state) => {
     ]),
     effect_setTimedValue(["timedText"], "timedText", 2e3, "timedText", ""),
     effect_setTimedValue(["node"], "label1", 2e3, label, null),
-    effect_throwMessage(["throwMsg"], "msg", text2, 50)
+    effect_throwMessageStart(["throwMsg"], "msg", text2, 50)
   ];
 };
 const action_throwAction = (state) => {
@@ -774,16 +779,21 @@ const action_toggleFinalize = (state) => {
   return setValue(state, ["finalize"], !state.finalize);
 };
 const action_move = (state) => {
-  const effect = effect_rAFProperties({
+  const effect = effect_RAFProperties({
     id: "raf",
     keyNames: ["tasks"],
     duration: 1e3,
     properties: [{
-      name: "transform",
-      value: (progress) => {
-        const fn = progress_easing[state.easing];
-        return `translate(${fn(progress) * 10}rem, 0)`;
-      }
+      selector: "#raf",
+      rules: [
+        {
+          name: "transform",
+          value: (progress) => {
+            const fn = progress_easing[state.easing];
+            return `translate(${fn(progress) * 10}rem, 0)`;
+          }
+        }
+      ]
     }],
     finish: (state2, rafTask) => {
       const dom = document.getElementById(rafTask.id);
@@ -801,18 +811,23 @@ const action_setEasing = (state, e) => {
   return setValue(state, ["easing"], element.value);
 };
 const action_setProperties = (state) => {
-  const effect = effect_rAFProperties({
+  const effect = effect_RAFProperties({
     id: "rafP",
     keyNames: ["tasks"],
     duration: 1e3,
     properties: [
       {
-        name: "font-size",
-        value: (progress) => `${1 + progress * 3}rem`
-      },
-      {
-        name: "margin",
-        value: (progress) => `0.5rem 0 0 ${2 + progress * 5}rem`
+        selector: "#rafP",
+        rules: [
+          {
+            name: "font-size",
+            value: (progress) => `${1 + progress * 3}rem`
+          },
+          {
+            name: "margin",
+            value: (progress) => `0.5rem 0 0.5rem ${2 + progress * 5}rem`
+          }
+        ]
       }
     ],
     finish: (state2, rafTask) => {
@@ -820,7 +835,7 @@ const action_setProperties = (state) => {
       if (!dom) return state2;
       setTimeout(() => {
         dom.style.fontSize = "1rem";
-        dom.style.margin = "0.5rem 0 0 2rem";
+        dom.style.margin = "0.5rem 0 0.5rem 2rem";
       }, 1e3);
       return state2;
     }
@@ -867,14 +882,14 @@ addEventListener("load", () => {
       "button",
       {
         type: "button",
-        onclick: (state2) => [state2, effect_pauseThrowMessage("msg")]
+        onclick: (state2) => [state2, effect_throwMessagePause("msg")]
       },
       "pause"
     ), /* @__PURE__ */ h(
       "button",
       {
         type: "button",
-        onclick: (state2) => [state2, effect_resumeThrowMessage("msg")]
+        onclick: (state2) => [state2, effect_throwMessageResume("msg")]
       },
       "resume"
     )), /* @__PURE__ */ h("h2", null, "rAF / Animation System"), /* @__PURE__ */ h("h3", null, "effect_rAFProperties - transform"), /* @__PURE__ */ h("button", { state, onclick: action_move, id: "raf" }, state.easing), /* @__PURE__ */ h("br", null), /* @__PURE__ */ h("select", { onchange: action_setEasing }, easingList.map((p) => /* @__PURE__ */ h("option", null, p))), /* @__PURE__ */ h("h3", null, "effect_rAFProperties - font-size"), /* @__PURE__ */ h("button", { state, onclick: action_setProperties, id: "rafP" }, "font")), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page4" }, /* @__PURE__ */ h("h2", null, "Subscriptions example"), /* @__PURE__ */ h("h2", null, "subscription_nodesCleanup"), /* @__PURE__ */ h("button", { type: "button", onclick: action_throwAction }, "throw action"), /* @__PURE__ */ h("button", { type: "button", onclick: action_toggleFinalize }, "toggle object"), state.finalize ? /* @__PURE__ */ h("span", { id: "dom" }, "object") : null), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page5" }, /* @__PURE__ */ h("h2", null, "DOM / Event example"), /* @__PURE__ */ h("h3", null, "getScrollMargin"), /* @__PURE__ */ h("div", { id: "parent", onscroll: action_scroll }, /* @__PURE__ */ h("div", { id: "child" }, "スクロールしてください")), /* @__PURE__ */ h("div", null, JSON.stringify(state.margin))))),
@@ -886,7 +901,7 @@ addEventListener("load", () => {
           return state2;
         }
       }]),
-      subscription_rAFManager(state, ["tasks"])
+      subscription_RAFManager(state, ["tasks"])
     ]
   });
 });

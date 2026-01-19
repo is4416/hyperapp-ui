@@ -2,21 +2,20 @@
 // import 
 // ---------- ---------- ---------- ---------- ----------
 
-import { app, VNode, Dispatch } from "hyperapp"
+import { app, VNode } from "hyperapp"
 import h from "hyperapp-jsx-pragma"
 import {
-	setValue, getValue, getLocalState, setLocalState,
-	Route,
-	SelectButton,
-	OptionButton,
-	effect_initializeNodes,
+	setValue,
+	Route, SelectButton, OptionButton,
+	effect_nodesInitialize,
 	effect_setTimedValue,
-	effect_throwMessage, effect_pauseThrowMessage, effect_resumeThrowMessage,
-	subscription_nodesCleanup,
-	ScrollMargin, getScrollMargin,
-	RAFTask, subscription_rAFManager, CSSProperty, effect_rAFProperties
+	effect_throwMessageStart, effect_throwMessagePause, effect_throwMessageResume,
+	RAFTask, subscription_RAFManager,
+	subscription_nodesCleanup, subscription_nodesLifecycleByIds,
+	effect_RAFProperties,
+	progress_easing,
+	ScrollMargin, getScrollMargin
 } from "./hyperapp-ui"
-import { progress_easing } from "./progress_easing"
 
 // ---------- ---------- ---------- ---------- ----------
 // State
@@ -63,7 +62,7 @@ const action_effectButtonClick = (state: State) => {
 
 	return [
 		state,
-		effect_initializeNodes([
+		effect_nodesInitialize([
 			{
 				id: "initTest",
 				event: (state: State, element: Element) => {
@@ -75,7 +74,7 @@ const action_effectButtonClick = (state: State) => {
 		]),
 		effect_setTimedValue(["timedText"], "timedText", 2000, "timedText", ""),
 		effect_setTimedValue(["node"], "label1", 2000, label, null),
-		effect_throwMessage(["throwMsg"], "msg", text, 50)
+		effect_throwMessageStart(["throwMsg"], "msg", text, 50)
 	]
 }
 
@@ -100,17 +99,22 @@ const action_toggleFinalize = (state: State) => {
 // ---------- ---------- ---------- ---------- ----------
 
 const action_move = (state: State) => {
-	const effect = effect_rAFProperties({
+	const effect = effect_RAFProperties({
 		id: "raf",
 		keyNames: ["tasks"],
 		duration: 1000,
 
 		properties: [{
-			name : "transform",
-			value: (progress: number) => {
-				const fn = progress_easing[state.easing]
-				return `translate(${ fn(progress) * 10}rem, 0)`
-			}
+			selector: "#raf",
+			rules   : [
+				{
+					name : "transform",
+					value: (progress: number) => {
+						const fn = progress_easing[state.easing]
+						return `translate(${ fn(progress) * 10}rem, 0)`
+					}
+				}
+			]
 		}],
 
 		finish: (state: State, rafTask: RAFTask<State>) => {
@@ -140,27 +144,32 @@ const action_setEasing = (state: State, e: Event) => {
 // ---------- ---------- ---------- ---------- ----------
 
 const action_setProperties = (state: State) => {
-	const effect = effect_rAFProperties({
+
+	const effect = effect_RAFProperties({
 		id        : "rafP",
 		keyNames  : ["tasks"],
 		duration  : 1000,
 		properties: [
 			{
-				name : "font-size",
-				value: (progress: number) => `${ 1 + (progress * 3) }rem`
+				selector: "#rafP",
+				rules: [
+					{
+						name : "font-size",
+						value: (progress: number) => `${ 1 + (progress * 3) }rem`
+					},
+					{
+						name: "margin",
+						value: (progress: number) => `0.5rem 0 0.5rem ${ 2 + progress * 5}rem`
+					}
+				]
 			},
-			{
-				name: "margin",
-				value: (progress: number) => `0.5rem 0 0 ${ 2 + progress * 5}rem`
-			}
 		],
-
 		finish: (state: State, rafTask: RAFTask<State>) => {
 			const dom = document.getElementById(rafTask.id)
 			if (!dom) return state
 			setTimeout(() => {
 				dom.style.fontSize = "1rem"
-				dom.style.margin = "0.5rem 0 0 2rem"
+				dom.style.margin = "0.5rem 0 0.5rem 2rem"
 			}, 1000)
 			return state
 		}
@@ -273,11 +282,11 @@ addEventListener("load", () => {
 					<div>
 						<button
 							type    = "button"
-							onclick = {(state: State) => [state, effect_pauseThrowMessage("msg")]}
+							onclick = {(state: State) => [state, effect_throwMessagePause("msg")]}
 						>pause</button>
 						<button
 							type    = "button"
-							onclick = {(state: State) => [state, effect_resumeThrowMessage("msg")]}
+							onclick = {(state: State) => [state, effect_throwMessageResume("msg")]}
 						>resume</button>
 					</div>
 
@@ -324,7 +333,7 @@ addEventListener("load", () => {
 					return state
 				}
 			}]),
-			subscription_rAFManager(state, ["tasks"])
+			subscription_RAFManager(state, ["tasks"])
 		]
 	})
 })
