@@ -39,3 +39,99 @@ export const getScrollMargin = function (e: Event): ScrollMargin {
 		bottom: el.scrollHeight - (el.clientHeight + el.scrollTop)
 	}
 }
+
+// ---------- ---------- ---------- ---------- ----------
+// marqee
+// ---------- ---------- ---------- ---------- ----------
+/**
+ * Carousel 風に DOM が流れるアニメーションを実行する
+ * 
+ * @param {Object}                 props          - props
+ * @param {HTMLUListElement}       props.ul       - ul エレメント
+ * @param {number}                 props.duration - 実行時間 (ms)
+ * @param {number}                 props.interval - 待機時間 (ms)
+ * @param {(t: number) => number} [props.easing]  - easing 関数
+ * @returns {{start: () => void, stop: () => void}}
+ */
+export const marqee = function <S> (
+	props: {
+		ul      : HTMLUListElement
+		duration: number
+		interval: number
+		easing ?: (t: number) => number
+	}
+): { start: () => void, stop : () => void } {
+	const { ul, duration, interval, easing = (t: number) => t } = props
+
+	// function calcWidth
+	const calcWidth = () => {
+		const children = Array.from(ul.children) as HTMLLIElement[]
+		return !children || children.length < 2
+			? 0
+			: children[1].offsetLeft - children[0].offsetLeft
+	}
+
+	// variable
+	let rID       = 0
+	let timerID   = 0
+	let startTime = 0
+	let width     = 0
+
+	// requestAnimationFrame callback
+	const action = (now: number) => {
+
+		// set startTime
+		if (startTime === 0) startTime = now
+
+		// get progress
+		const progress = Math.min((now - startTime) / Math.max(1, duration))
+
+		// set property
+		ul.style.transform = `translateX(${ - easing(progress) * width }px)`
+
+		// next
+		if (progress < 1) {
+			rID = requestAnimationFrame(action)
+			return
+		}
+
+		// reset property
+		ul.style.transform = `translateX(0px)`
+
+		// set children
+		const firstChild = ul.children[0]
+		if (!firstChild) return
+
+		ul.appendChild(firstChild)
+
+		// loop
+		timerID = window.setTimeout(() => {
+			startTime = 0
+			rID = requestAnimationFrame(action)
+		}, interval)
+	}
+
+	// result
+	return {
+		start: () => {
+			if (rID !== 0) return
+
+			width = calcWidth()
+			if (width === 0) return
+
+			ul.style.willChange = "transform"
+			rID = requestAnimationFrame(action)
+		},
+
+		stop : () => {
+			cancelAnimationFrame(rID)
+			clearTimeout(timerID)
+
+			ul.style.willChange = ""
+			ul.style.transform = ""
+
+			rID     = 0
+			timerID = 0
+		}
+	}
+}

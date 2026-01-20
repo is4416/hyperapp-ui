@@ -42,9 +42,13 @@ JSX を使用する場合は `hyperapp-jsx-pragma` を前提としています�
 **animation / easing.ts**
 - [progress_easing](#progress_easing)
 
+**animation / carousel.ts**
+- [effect_carouselStart](#effect_carouselstart)
+
 **dom / utils.ts**
 - [ScrollMargin](#scrollmargin)
 - [getScrollMargin](#getscrollmargin)
+- [marqee](#marqee)
 
 **dom / lifecycle.ts**
 - [effect_setTimedValue](#effect_settimedvalue)
@@ -116,12 +120,19 @@ rAF を利用した CSS設定
 
 ---
 
+### animation / carousel.ts
+
+- `effect_carouselStart` : subscription_RAFManager をベースにした Carousel アニメーションエフェクト
+
+---
+
 ### dom / utils
 
 DOM を直接扱うユーティリティ
 
-- `ScrollMargin` : スクロールの余白を管理するオブジェクト
+- `ScrollMargin`    : スクロールの余白を管理するオブジェクト
 - `getScrollMargin` : スクロールの余白を取得
+- `marqee`          : Carousel 風に DOM が流れるアニメーションを実行する
 
 ---
 
@@ -161,13 +172,17 @@ src
      │  │   CSSProperty
      │  │   effect_RAFProperties
      │  │
-     │  └ easing.ts
-     │       progress_easing
+     │  ├ easing.ts
+     │  │   progress_easing
+     │  │
+     │  └ carousel.ts
+     │       effect_carouselStart
      │
      └ dom
          ├ utils.ts
          │   ScrollMargin
          │   getScrollMargin
+         │   marqee
          │
          └ lifecycle.ts
               effect_setTimedValue
@@ -521,6 +536,43 @@ export const effect_RAFProperties = function <S>(
 
 ---
 
+### effect_carouselStart
+`subscription_RAFManager` をベースにした Carousel アニメーションエフェクトです
+
+```ts
+export const effect_carouselStart = function <S> (
+	props: {
+		id      : string
+		keyNames: string[]
+		duration: number
+		interval: number
+		easing? : (t: number) => number
+	}
+): (dispatch: Dispatch<S>) => void
+```
+*ほぼ effect_CSSProperties のラッパーになっています*
+
+**パラメータ**
+- props.id      : ユニークID (DOM の id と同一)
+- props.keyNames: RAFTask 配列までのパス
+- props.duration: 実行時間 (ms)
+- props.interval: 待機時間 (ms)
+- props.easing  : easing 関数 (省略時は線形)
+
+**説明**
+
+現状、DOM/utils.ts の marqee とほぼ同じ動作になります  
+marqee は単純な DOM に対しての副作用で、Carousel としての動作は  
+ステート経由で rAF を制御しているこちらに集約されることになります
+
+marqee はステートを通さず直接 DOM に対して副作用を発生させるため  
+用途によっては marqee に優位性があります
+
+- marqee : DOM 直接操作。軽量で即時反映
+- effect_carouselStart : Hyperapp のステート経由で管理。RAFManager と連携可能
+
+---
+
 ### progress_easing
 easing プリセット
 
@@ -614,6 +666,33 @@ export const getScrollMargin = function (e: Event): ScrollMargin
 ```
 
 - e: イベント
+
+---
+
+### marqee
+Carousel 風に DOM が流れるアニメーションを実行します
+
+```ts
+export const marqee = function <S> (
+	props: {
+		ul      : HTMLUListElement
+		duration: number
+		interval: number
+		easing ?: (t: number) => number
+	}
+): { start: () => void, stop : () => void }
+```
+*ステートから独立して `requestAnimationFrame` により直接 DOM を変更します*
+
+**パラメータ**
+- props.ul      : アニメーション対象の <ul> エレメント
+- props.duration: 実行時間 (ms)
+- props.interval: 待機時間 (ms)
+- props.easing  : easing 関数
+
+**戻値**
+- start(): アニメーションを開始
+- stop() : アニメーションを停止
 
 ---
 

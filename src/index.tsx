@@ -2,7 +2,7 @@
 // import 
 // ---------- ---------- ---------- ---------- ----------
 
-import { app, VNode } from "hyperapp"
+import { app, VNode, Dispatch } from "hyperapp"
 import h from "hyperapp-jsx-pragma"
 import {
 	setValue,
@@ -14,7 +14,8 @@ import {
 	subscription_nodesCleanup, subscription_nodesLifecycleByIds,
 	effect_RAFProperties,
 	progress_easing,
-	ScrollMargin, getScrollMargin
+	ScrollMargin, getScrollMargin, marqee,
+	effect_carouselStart
 } from "./hyperapp-ui"
 
 // ---------- ---------- ---------- ---------- ----------
@@ -22,17 +23,32 @@ import {
 // ---------- ---------- ---------- ---------- ----------
 
 interface State {
-	selected : string[]
-	group0   : string
-	group1   : string
-	group2   : string
-	timedText: string
-	throwMsg : string
-	node     : VNode<State> | null
-	finalize : boolean
-	margin   : ScrollMargin
-	tasks    : RAFTask<State>[]
-	easing   : keyof typeof progress_easing
+	tabName: string
+
+	selectButton: {
+		selected: string[]
+	},
+
+	optionButton: {
+		group1: string
+		group2: string
+	},
+
+	effect: {
+		timedText: string
+		throwMsg : string
+		node     : VNode<State> | null
+		easing   : keyof typeof progress_easing
+	},
+
+	subscriptions: {
+		finalize: boolean
+		tasks   : RAFTask<State>[]
+	},
+
+	dom: {
+		margin: ScrollMargin
+	}
 }
 
 // ---------- ---------- ---------- ---------- ----------
@@ -40,16 +56,32 @@ interface State {
 // ---------- ---------- ---------- ---------- ----------
 
 const action_reset = (state: State) => ({
-	selected : [],
-	group0   : "",
-	group1   : "",
-	group2   : "",
-	timedText: "",
-	throwMsg : "",
-	node     : null,
-	finalize : false,
-	margin   : { top: 0, left: 0, right: 0, bottom: 0 },
-	easing   : "linear"
+	tabName   : "",
+
+	selectButton: {
+		selected: []
+	},
+
+	optionButton: {
+		group1: "",
+		group2: ""
+	},
+
+	effect: {
+		timedText: "",
+		throwMsg : "",
+		node     : null,
+		easing   : "linear"
+	},
+
+	subscriptions: {
+		finalize: false,
+		tasks   : []
+	},
+
+	dom: {
+		margin: { top: 0, left: 0, right: 0, bottom: 0 },
+	}
 })
 
 // ---------- ---------- ---------- ---------- ----------
@@ -72,9 +104,9 @@ const action_effectButtonClick = (state: State) => {
 				}
 			}
 		]),
-		effect_setTimedValue(["timedText"], "timedText", 2000, "timedText", ""),
-		effect_setTimedValue(["node"], "label1", 2000, label, null),
-		effect_throwMessageStart(["throwMsg"], "msg", text, 50)
+		effect_setTimedValue(["effect", "timedText"], "timedText", 2000, "timedText", ""),
+		effect_setTimedValue(["effect", "node"], "label1", 2000, label, null),
+		effect_throwMessageStart(["effect", "throwMsg"], "msg", text, 50)
 	]
 }
 
@@ -91,7 +123,7 @@ const action_throwAction = (state: State) => {
 // ---------- ---------- ---------- ---------- ----------
 
 const action_toggleFinalize = (state: State) => {
-	return setValue(state, ["finalize"], !state.finalize)
+	return setValue(state, ["subscriptions", "finalize"], !state.subscriptions.finalize)
 }
 
 // ---------- ---------- ---------- ---------- ----------
@@ -101,7 +133,7 @@ const action_toggleFinalize = (state: State) => {
 const action_move = (state: State) => {
 	const effect = effect_RAFProperties({
 		id: "raf",
-		keyNames: ["tasks"],
+		keyNames: ["subscriptions", "tasks"],
 		duration: 1000,
 
 		properties: [{
@@ -110,7 +142,7 @@ const action_move = (state: State) => {
 				{
 					name : "transform",
 					value: (progress: number) => {
-						const fn = progress_easing[state.easing]
+						const fn = progress_easing[state.effect.easing]
 						return `translate(${ fn(progress) * 10}rem, 0)`
 					}
 				}
@@ -136,7 +168,7 @@ const action_move = (state: State) => {
 
 const action_setEasing = (state: State, e: Event) => {
 	const element = e.currentTarget as HTMLSelectElement
-	return setValue(state, ["easing"], element.value)
+	return setValue(state, ["effect", "easing"], element.value)
 }
 
 // ---------- ---------- ---------- ---------- ----------
@@ -147,7 +179,7 @@ const action_setProperties = (state: State) => {
 
 	const effect = effect_RAFProperties({
 		id        : "rafP",
-		keyNames  : ["tasks"],
+		keyNames  : ["subscriptions", "tasks"],
 		duration  : 1000,
 		properties: [
 			{
@@ -183,7 +215,47 @@ const action_setProperties = (state: State) => {
 // ---------- ---------- ---------- ---------- ----------
 
 const action_scroll = (state: State, e: Event) => {
-	return setValue(state, ["margin"], getScrollMargin(e))
+	return setValue(state, ["dom", "margin"], getScrollMargin(e))
+}
+
+// ---------- ---------- ---------- ---------- ----------
+// action_carouselButtonClick
+// ---------- ---------- ---------- ---------- ----------
+let controls: { start: () => void, stop: () => void } | null = null
+
+const action_carouselButtonClick = (state: State) => {
+	if (controls) controls.stop()
+
+	// marqee
+	const effect_setMarqee = (dispatch: Dispatch<State>) => {
+		dispatch((state: State) => {
+			const ul = document.getElementById("marqee") as HTMLUListElement
+			if (!ul) return state
+
+			controls = marqee({
+				ul      : ul,
+				duration: 2000,
+				interval: 1000,
+				easing  : progress_easing.easeOutCubic
+			})
+
+			controls.start()
+
+			return state
+		})
+	}
+
+	return [
+		state,
+		effect_setMarqee,
+		effect_carouselStart({
+			id      : "carousel",
+			keyNames: ["subscriptions", "tasks"],
+			duration: 2000,
+			interval: 1000,
+			easing  : progress_easing.easeOutCubic
+		})
+	]
 }
 
 // ---------- ---------- ---------- ---------- ----------
@@ -203,17 +275,32 @@ addEventListener("load", () => {
 
 	// State
 	const param: State = {
-		selected : [],
-		group0   : "",
-		group1   : "",
-		group2   : "",
-		timedText: "",
-		throwMsg : "",
-		node     : null,
-		finalize : false,
-		margin   : { top: 0, left: 0, right: 0, bottom: 0 },
-		tasks    : [],
-		easing   : "linear"
+		tabName: "",
+
+		selectButton: {
+			selected: []
+		},
+
+		optionButton: {
+			group1: "",
+			group2: ""
+		},
+
+		effect: {
+			timedText: "",
+			throwMsg : "",
+			node     : null,
+			easing   : "linear"
+		},
+
+		subscriptions: {
+			finalize: false,
+			tasks   : [],
+		},
+
+		dom: {
+			margin: { top: 0, left: 0, right: 0, bottom: 0 },
+		}
 	}
 
 	// app
@@ -225,60 +312,66 @@ addEventListener("load", () => {
 
 			{/* *** Tabs Header *** */}
 			<div>
-				<OptionButton state={state} keyNames={["group0"]} id="page1">SelectButton</OptionButton>
-				<OptionButton state={state} keyNames={["group0"]} id="page2">OptionButton</OptionButton>
+				<OptionButton state={state} keyNames={["tabName"]} id="page1">SelectButton</OptionButton>
+				<OptionButton state={state} keyNames={["tabName"]} id="page2">OptionButton</OptionButton>
 				<OptionButton
 					state    = { state }
-					keyNames = { ["group0"] }
+					keyNames = { ["tabName"] }
 					id       = "page3"
 					onclick  = { action_effectButtonClick }
 				>Effect</OptionButton>
-				<OptionButton state={state} keyNames={["group0"]} id="page4">Subscriptions</OptionButton>
-				<OptionButton state={state} keyNames={["group0"]} id="page5">DOM / Event</OptionButton>
+				<OptionButton state={state} keyNames={["tabName"]} id="page4">Subscriptions</OptionButton>
+				<OptionButton state={state} keyNames={["tabName"]} id="page5">DOM / Event</OptionButton>
+				<OptionButton
+					state    = {state}
+					keyNames = {["tabName"]}
+					id       = "page6"
+					onclick  = { action_carouselButtonClick }
+				>Carousel</OptionButton>
 				<button type="button" onclick={action_reset}>reset</button>
 			</div>
 
 			{/* *** Tabs Body *** */}
 			<div>
 				{/* *** page1: SelectButton *** */}
-				<Route state={state} keyNames={["group0"]} match="page1">
+				<Route state={state} keyNames={["tabName"]} match="page1">
 					<h2>SelectButton example</h2>
 
 					<h3>select / none</h3>
-					<SelectButton state={state} keyNames={["selected"]} id="btn1">select / none</SelectButton>
+					<SelectButton state={state} keyNames={["selectButton", "selected"]} id="btn1">select / none</SelectButton>
 
 					<h3>select / reverse / none</h3>
-					<SelectButton state={state} keyNames={["selected"]} id="btn2" reverse={true}>select / reverse / none</SelectButton>
+					<SelectButton state={state} keyNames={["selectButton", "selected"]} id="btn2" reverse={true}>select / reverse / none</SelectButton>
 				</Route>
 
 				{/* *** page2: OptionButton *** */}
-				<Route state={state} keyNames={["group0"]} match="page2">
+				<Route state={state} keyNames={["tabName"]} match="page2">
 					<h2>OptionButton example</h2>
 
 					<h3>select</h3>
-					<OptionButton state={state} keyNames={["group1"]} id="g1_btn1">group1_btn1</OptionButton>
-					<OptionButton state={state} keyNames={["group1"]} id="g1_btn2">group1_btn2</OptionButton>
-					<OptionButton state={state} keyNames={["group1"]} id="g1_btn3">group1_btn3</OptionButton>
+					<OptionButton state={state} keyNames={["optionButton", "group1"]} id="g1_btn1">group1_btn1</OptionButton>
+					<OptionButton state={state} keyNames={["optionButton", "group1"]} id="g1_btn2">group1_btn2</OptionButton>
+					<OptionButton state={state} keyNames={["optionButton", "group1"]} id="g1_btn3">group1_btn3</OptionButton>
 
 					<h3>select / reverse</h3>
-					<OptionButton state={state} keyNames={["group2"]} id="g2_btn1" reverse={true}>group2_btn1</OptionButton>
-					<OptionButton state={state} keyNames={["group2"]} id="g2_btn2" reverse={true}>group2_btn2</OptionButton>
-					<OptionButton state={state} keyNames={["group2"]} id="g2_btn3" reverse={true}>group2_btn3</OptionButton>
+					<OptionButton state={state} keyNames={["optionButton", "group2"]} id="g2_btn1" reverse={true}>group2_btn1</OptionButton>
+					<OptionButton state={state} keyNames={["optionButton", "group2"]} id="g2_btn2" reverse={true}>group2_btn2</OptionButton>
+					<OptionButton state={state} keyNames={["optionButton", "group2"]} id="g2_btn3" reverse={true}>group2_btn3</OptionButton>
 				</Route>
 
 				{/* *** page3: Effect *** */}
-				<Route state={state} keyNames={["group0"]} match="page3">
+				<Route state={state} keyNames={["tabName"]} match="page3">
 					<h2>Effect example</h2>
 
 					<h3>effect_initializeNodes</h3>
 					<input type="text" id="initTest" />
 
 					<h3>effect_setTimedValue</h3>
-					<input type="text" id="timedText" value={ state.timedText } />
-					{ state.node }
+					<input type="text" id="timedText" value={ state.effect.timedText } />
+					{ state.effect.node }
 
 					<h3>effect_throwMessage</h3>
-					<input type="text" id="msg" value={ state.throwMsg } />
+					<input type="text" id="msg" value={ state.effect.throwMsg } />
 					<div>
 						<button
 							type    = "button"
@@ -293,7 +386,7 @@ addEventListener("load", () => {
 					<h2>rAF / Animation System</h2>
 
 					<h3>effect_rAFProperties - transform</h3>
-					<button state={state} onclick={action_move} id="raf">{ state.easing }</button><br/>
+					<button state={state} onclick={action_move} id="raf">{ state.effect.easing }</button><br/>
 					<select onchange={action_setEasing}>{
 						easingList.map(p => (<option>{p}</option>))
 					}</select>
@@ -303,24 +396,37 @@ addEventListener("load", () => {
 				</Route>
 
 				{/* *** page4: Subscriptions *** */}
-				<Route state={state} keyNames={["group0"]} match="page4">
+				<Route state={state} keyNames={["tabName"]} match="page4">
 					<h2>Subscriptions example</h2>
 
 					<h2>subscription_nodesCleanup</h2>
 					<button type="button" onclick={action_throwAction}>throw action</button>
 					<button type="button" onclick={action_toggleFinalize}>toggle object</button>
-					{ state.finalize ? (<span id="dom">object</span>) : null }
+					{ state.subscriptions.finalize ? (<span id="dom">object</span>) : null }
 				</Route>
 
 				{/* *** page5: DOM / Event *** */}
-				<Route state={state} keyNames={["group0"]} match="page5">
+				<Route state={state} keyNames={["tabName"]} match="page5">
 					<h2>DOM / Event example</h2>
 
 					<h3>getScrollMargin</h3>
 					<div id="parent" onscroll={action_scroll}>
 						<div id="child">スクロールしてください</div>
 					</div>
-					<div>{ JSON.stringify(state.margin) }</div>
+					<div>{ JSON.stringify(state.dom.margin) }</div>
+				</Route>
+
+				{/* *** page6: Carousel *** */}
+				<Route state={state} keyNames={["tabName"]} match="page6">
+					<h2>Carousel</h2>
+					<ul id="carousel">{
+						Array.from({length: 5}).map((_, i) => (<li>{i}</li>))
+					}</ul>
+
+					<h2>marqee</h2>
+					<ul id="marqee">{
+						Array.from({length: 5}).map((_, i) => (<li>{i}</li>))
+					}</ul>
 				</Route>
 			</div>
 		</main>),
@@ -333,7 +439,7 @@ addEventListener("load", () => {
 					return state
 				}
 			}]),
-			subscription_RAFManager(state, ["tasks"])
+			subscription_RAFManager(state, ["subscriptions", "tasks"])
 		]
 	})
 })

@@ -590,7 +590,7 @@ const GPU_LAYER = /* @__PURE__ */ new Set(["transform", "opacity"]);
 const effect_RAFProperties = function(props) {
   const { id: id2, keyNames, duration, properties, finish } = props;
   const action = (state, rafTask) => {
-    const tasks = getValue(state, keyNames, []).filter((task) => task.id !== rafTask.id).sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+    const tasks = getValue(state, keyNames, []).filter((task) => task.id !== rafTask.id);
     const progress = Math.min(
       1,
       ((rafTask.currentTime ?? 0) - (rafTask.startTime ?? 0)) / Math.max(1, rafTask.duration)
@@ -672,6 +672,43 @@ const progress_easing = {
     return t === 0 ? 0 : t === 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
   }
 };
+const effect_carouselStart = function(props) {
+  const { id: id2, keyNames, duration, interval, easing = (t) => t } = props;
+  const createEffect = (width) => effect_RAFProperties({
+    id: id2,
+    keyNames,
+    duration,
+    properties: [{
+      selector: `#${id2}`,
+      rules: [{
+        name: "transform",
+        value: (progress) => `translateX(${-easing(progress) * width}px)`
+      }]
+    }],
+    finish: (state, rafTask) => {
+      return [state, (dispatch) => {
+        const parent = document.getElementById(rafTask.id);
+        if (!parent) return;
+        const children = Array.from(parent.children);
+        if (!children || children.length === 0) return;
+        const firstChild = children[0];
+        parent.appendChild(firstChild);
+        parent.style.transform = `translateX(0px)`;
+        setTimeout(() => dispatch((state2) => [state2, createEffect(width)]), interval);
+      }];
+    }
+  });
+  return (dispatch) => {
+    dispatch((state) => {
+      const parent = document.getElementById(id2);
+      if (!parent) return state;
+      const children = Array.from(parent.children);
+      if (!children || children.length < 2) return state;
+      const width = children[1].offsetLeft - children[0].offsetLeft;
+      return [state, createEffect(width)];
+    });
+  };
+};
 const getScrollMargin = function(e) {
   const el2 = e.currentTarget;
   if (!el2) return { top: 0, left: 0, right: 0, bottom: 0 };
@@ -680,6 +717,51 @@ const getScrollMargin = function(e) {
     left: el2.scrollLeft,
     right: el2.scrollWidth - (el2.clientWidth + el2.scrollLeft),
     bottom: el2.scrollHeight - (el2.clientHeight + el2.scrollTop)
+  };
+};
+const marqee = function(props) {
+  const { ul, duration, interval, easing = (t) => t } = props;
+  const calcWidth = () => {
+    const children = Array.from(ul.children);
+    return !children || children.length < 2 ? 0 : children[1].offsetLeft - children[0].offsetLeft;
+  };
+  let rID = 0;
+  let timerID = 0;
+  let startTime = 0;
+  let width = 0;
+  const action = (now) => {
+    if (startTime === 0) startTime = now;
+    const progress = Math.min((now - startTime) / Math.max(1, duration));
+    ul.style.transform = `translateX(${-easing(progress) * width}px)`;
+    if (progress < 1) {
+      rID = requestAnimationFrame(action);
+      return;
+    }
+    ul.style.transform = `translateX(0px)`;
+    const firstChild = ul.children[0];
+    if (!firstChild) return;
+    ul.appendChild(firstChild);
+    timerID = window.setTimeout(() => {
+      startTime = 0;
+      rID = requestAnimationFrame(action);
+    }, interval);
+  };
+  return {
+    start: () => {
+      if (rID !== 0) return;
+      width = calcWidth();
+      if (width === 0) return;
+      ul.style.willChange = "transform";
+      rID = requestAnimationFrame(action);
+    },
+    stop: () => {
+      cancelAnimationFrame(rID);
+      clearTimeout(timerID);
+      ul.style.willChange = "";
+      ul.style.transform = "";
+      rID = 0;
+      timerID = 0;
+    }
   };
 };
 const effect_setTimedValue = function(keyNames, id2, timeout, value, reset = null) {
@@ -741,16 +823,27 @@ const subscription_nodesCleanup = function(nodes) {
   ]);
 };
 const action_reset = (state) => ({
-  selected: [],
-  group0: "",
-  group1: "",
-  group2: "",
-  timedText: "",
-  throwMsg: "",
-  node: null,
-  finalize: false,
-  margin: { top: 0, left: 0, right: 0, bottom: 0 },
-  easing: "linear"
+  tabName: "",
+  selectButton: {
+    selected: []
+  },
+  optionButton: {
+    group1: "",
+    group2: ""
+  },
+  effect: {
+    timedText: "",
+    throwMsg: "",
+    node: null,
+    easing: "linear"
+  },
+  subscriptions: {
+    finalize: false,
+    tasks: []
+  },
+  dom: {
+    margin: { top: 0, left: 0, right: 0, bottom: 0 }
+  }
 });
 const action_effectButtonClick = (state) => {
   const label = /* @__PURE__ */ h("label", null, "Label");
@@ -767,21 +860,21 @@ const action_effectButtonClick = (state) => {
         }
       }
     ]),
-    effect_setTimedValue(["timedText"], "timedText", 2e3, "timedText", ""),
-    effect_setTimedValue(["node"], "label1", 2e3, label, null),
-    effect_throwMessageStart(["throwMsg"], "msg", text2, 50)
+    effect_setTimedValue(["effect", "timedText"], "timedText", 2e3, "timedText", ""),
+    effect_setTimedValue(["effect", "node"], "label1", 2e3, label, null),
+    effect_throwMessageStart(["effect", "throwMsg"], "msg", text2, 50)
   ];
 };
 const action_throwAction = (state) => {
   return { ...state };
 };
 const action_toggleFinalize = (state) => {
-  return setValue(state, ["finalize"], !state.finalize);
+  return setValue(state, ["subscriptions", "finalize"], !state.subscriptions.finalize);
 };
 const action_move = (state) => {
   const effect = effect_RAFProperties({
     id: "raf",
-    keyNames: ["tasks"],
+    keyNames: ["subscriptions", "tasks"],
     duration: 1e3,
     properties: [{
       selector: "#raf",
@@ -789,7 +882,7 @@ const action_move = (state) => {
         {
           name: "transform",
           value: (progress) => {
-            const fn = progress_easing[state.easing];
+            const fn = progress_easing[state.effect.easing];
             return `translate(${fn(progress) * 10}rem, 0)`;
           }
         }
@@ -808,12 +901,12 @@ const action_move = (state) => {
 };
 const action_setEasing = (state, e) => {
   const element = e.currentTarget;
-  return setValue(state, ["easing"], element.value);
+  return setValue(state, ["effect", "easing"], element.value);
 };
 const action_setProperties = (state) => {
   const effect = effect_RAFProperties({
     id: "rafP",
-    keyNames: ["tasks"],
+    keyNames: ["subscriptions", "tasks"],
     duration: 1e3,
     properties: [
       {
@@ -843,7 +936,36 @@ const action_setProperties = (state) => {
   return [state, effect];
 };
 const action_scroll = (state, e) => {
-  return setValue(state, ["margin"], getScrollMargin(e));
+  return setValue(state, ["dom", "margin"], getScrollMargin(e));
+};
+let controls = null;
+const action_carouselButtonClick = (state) => {
+  if (controls) controls.stop();
+  const effect_setMarqee = (dispatch) => {
+    dispatch((state2) => {
+      const ul = document.getElementById("marqee");
+      if (!ul) return state2;
+      controls = marqee({
+        ul,
+        duration: 2e3,
+        interval: 1e3,
+        easing: progress_easing.easeOutCubic
+      });
+      controls.start();
+      return state2;
+    });
+  };
+  return [
+    state,
+    effect_setMarqee,
+    effect_carouselStart({
+      id: "carousel",
+      keyNames: ["subscriptions", "tasks"],
+      duration: 2e3,
+      interval: 1e3,
+      easing: progress_easing.easeOutCubic
+    })
+  ];
 };
 addEventListener("load", () => {
   const easingList = (() => {
@@ -854,31 +976,50 @@ addEventListener("load", () => {
     return r;
   })();
   const param = {
-    selected: [],
-    group0: "",
-    group1: "",
-    group2: "",
-    timedText: "",
-    throwMsg: "",
-    node: null,
-    finalize: false,
-    margin: { top: 0, left: 0, right: 0, bottom: 0 },
-    tasks: [],
-    easing: "linear"
+    tabName: "",
+    selectButton: {
+      selected: []
+    },
+    optionButton: {
+      group1: "",
+      group2: ""
+    },
+    effect: {
+      timedText: "",
+      throwMsg: "",
+      node: null,
+      easing: "linear"
+    },
+    subscriptions: {
+      finalize: false,
+      tasks: []
+    },
+    dom: {
+      margin: { top: 0, left: 0, right: 0, bottom: 0 }
+    }
   };
   app({
     node: document.getElementById("app"),
     init: param,
-    view: (state) => /* @__PURE__ */ h("main", null, /* @__PURE__ */ h("div", null, /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group0"], id: "page1" }, "SelectButton"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group0"], id: "page2" }, "OptionButton"), /* @__PURE__ */ h(
+    view: (state) => /* @__PURE__ */ h("main", null, /* @__PURE__ */ h("div", null, /* @__PURE__ */ h(OptionButton, { state, keyNames: ["tabName"], id: "page1" }, "SelectButton"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["tabName"], id: "page2" }, "OptionButton"), /* @__PURE__ */ h(
       OptionButton,
       {
         state,
-        keyNames: ["group0"],
+        keyNames: ["tabName"],
         id: "page3",
         onclick: action_effectButtonClick
       },
       "Effect"
-    ), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group0"], id: "page4" }, "Subscriptions"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group0"], id: "page5" }, "DOM / Event"), /* @__PURE__ */ h("button", { type: "button", onclick: action_reset }, "reset")), /* @__PURE__ */ h("div", null, /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page1" }, /* @__PURE__ */ h("h2", null, "SelectButton example"), /* @__PURE__ */ h("h3", null, "select / none"), /* @__PURE__ */ h(SelectButton, { state, keyNames: ["selected"], id: "btn1" }, "select / none"), /* @__PURE__ */ h("h3", null, "select / reverse / none"), /* @__PURE__ */ h(SelectButton, { state, keyNames: ["selected"], id: "btn2", reverse: true }, "select / reverse / none")), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page2" }, /* @__PURE__ */ h("h2", null, "OptionButton example"), /* @__PURE__ */ h("h3", null, "select"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group1"], id: "g1_btn1" }, "group1_btn1"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group1"], id: "g1_btn2" }, "group1_btn2"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group1"], id: "g1_btn3" }, "group1_btn3"), /* @__PURE__ */ h("h3", null, "select / reverse"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group2"], id: "g2_btn1", reverse: true }, "group2_btn1"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group2"], id: "g2_btn2", reverse: true }, "group2_btn2"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["group2"], id: "g2_btn3", reverse: true }, "group2_btn3")), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page3" }, /* @__PURE__ */ h("h2", null, "Effect example"), /* @__PURE__ */ h("h3", null, "effect_initializeNodes"), /* @__PURE__ */ h("input", { type: "text", id: "initTest" }), /* @__PURE__ */ h("h3", null, "effect_setTimedValue"), /* @__PURE__ */ h("input", { type: "text", id: "timedText", value: state.timedText }), state.node, /* @__PURE__ */ h("h3", null, "effect_throwMessage"), /* @__PURE__ */ h("input", { type: "text", id: "msg", value: state.throwMsg }), /* @__PURE__ */ h("div", null, /* @__PURE__ */ h(
+    ), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["tabName"], id: "page4" }, "Subscriptions"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["tabName"], id: "page5" }, "DOM / Event"), /* @__PURE__ */ h(
+      OptionButton,
+      {
+        state,
+        keyNames: ["tabName"],
+        id: "page6",
+        onclick: action_carouselButtonClick
+      },
+      "Carousel"
+    ), /* @__PURE__ */ h("button", { type: "button", onclick: action_reset }, "reset")), /* @__PURE__ */ h("div", null, /* @__PURE__ */ h(Route, { state, keyNames: ["tabName"], match: "page1" }, /* @__PURE__ */ h("h2", null, "SelectButton example"), /* @__PURE__ */ h("h3", null, "select / none"), /* @__PURE__ */ h(SelectButton, { state, keyNames: ["selectButton", "selected"], id: "btn1" }, "select / none"), /* @__PURE__ */ h("h3", null, "select / reverse / none"), /* @__PURE__ */ h(SelectButton, { state, keyNames: ["selectButton", "selected"], id: "btn2", reverse: true }, "select / reverse / none")), /* @__PURE__ */ h(Route, { state, keyNames: ["tabName"], match: "page2" }, /* @__PURE__ */ h("h2", null, "OptionButton example"), /* @__PURE__ */ h("h3", null, "select"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["optionButton", "group1"], id: "g1_btn1" }, "group1_btn1"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["optionButton", "group1"], id: "g1_btn2" }, "group1_btn2"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["optionButton", "group1"], id: "g1_btn3" }, "group1_btn3"), /* @__PURE__ */ h("h3", null, "select / reverse"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["optionButton", "group2"], id: "g2_btn1", reverse: true }, "group2_btn1"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["optionButton", "group2"], id: "g2_btn2", reverse: true }, "group2_btn2"), /* @__PURE__ */ h(OptionButton, { state, keyNames: ["optionButton", "group2"], id: "g2_btn3", reverse: true }, "group2_btn3")), /* @__PURE__ */ h(Route, { state, keyNames: ["tabName"], match: "page3" }, /* @__PURE__ */ h("h2", null, "Effect example"), /* @__PURE__ */ h("h3", null, "effect_initializeNodes"), /* @__PURE__ */ h("input", { type: "text", id: "initTest" }), /* @__PURE__ */ h("h3", null, "effect_setTimedValue"), /* @__PURE__ */ h("input", { type: "text", id: "timedText", value: state.effect.timedText }), state.effect.node, /* @__PURE__ */ h("h3", null, "effect_throwMessage"), /* @__PURE__ */ h("input", { type: "text", id: "msg", value: state.effect.throwMsg }), /* @__PURE__ */ h("div", null, /* @__PURE__ */ h(
       "button",
       {
         type: "button",
@@ -892,7 +1033,7 @@ addEventListener("load", () => {
         onclick: (state2) => [state2, effect_throwMessageResume("msg")]
       },
       "resume"
-    )), /* @__PURE__ */ h("h2", null, "rAF / Animation System"), /* @__PURE__ */ h("h3", null, "effect_rAFProperties - transform"), /* @__PURE__ */ h("button", { state, onclick: action_move, id: "raf" }, state.easing), /* @__PURE__ */ h("br", null), /* @__PURE__ */ h("select", { onchange: action_setEasing }, easingList.map((p) => /* @__PURE__ */ h("option", null, p))), /* @__PURE__ */ h("h3", null, "effect_rAFProperties - font-size"), /* @__PURE__ */ h("button", { state, onclick: action_setProperties, id: "rafP" }, "font")), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page4" }, /* @__PURE__ */ h("h2", null, "Subscriptions example"), /* @__PURE__ */ h("h2", null, "subscription_nodesCleanup"), /* @__PURE__ */ h("button", { type: "button", onclick: action_throwAction }, "throw action"), /* @__PURE__ */ h("button", { type: "button", onclick: action_toggleFinalize }, "toggle object"), state.finalize ? /* @__PURE__ */ h("span", { id: "dom" }, "object") : null), /* @__PURE__ */ h(Route, { state, keyNames: ["group0"], match: "page5" }, /* @__PURE__ */ h("h2", null, "DOM / Event example"), /* @__PURE__ */ h("h3", null, "getScrollMargin"), /* @__PURE__ */ h("div", { id: "parent", onscroll: action_scroll }, /* @__PURE__ */ h("div", { id: "child" }, "スクロールしてください")), /* @__PURE__ */ h("div", null, JSON.stringify(state.margin))))),
+    )), /* @__PURE__ */ h("h2", null, "rAF / Animation System"), /* @__PURE__ */ h("h3", null, "effect_rAFProperties - transform"), /* @__PURE__ */ h("button", { state, onclick: action_move, id: "raf" }, state.effect.easing), /* @__PURE__ */ h("br", null), /* @__PURE__ */ h("select", { onchange: action_setEasing }, easingList.map((p) => /* @__PURE__ */ h("option", null, p))), /* @__PURE__ */ h("h3", null, "effect_rAFProperties - font-size"), /* @__PURE__ */ h("button", { state, onclick: action_setProperties, id: "rafP" }, "font")), /* @__PURE__ */ h(Route, { state, keyNames: ["tabName"], match: "page4" }, /* @__PURE__ */ h("h2", null, "Subscriptions example"), /* @__PURE__ */ h("h2", null, "subscription_nodesCleanup"), /* @__PURE__ */ h("button", { type: "button", onclick: action_throwAction }, "throw action"), /* @__PURE__ */ h("button", { type: "button", onclick: action_toggleFinalize }, "toggle object"), state.subscriptions.finalize ? /* @__PURE__ */ h("span", { id: "dom" }, "object") : null), /* @__PURE__ */ h(Route, { state, keyNames: ["tabName"], match: "page5" }, /* @__PURE__ */ h("h2", null, "DOM / Event example"), /* @__PURE__ */ h("h3", null, "getScrollMargin"), /* @__PURE__ */ h("div", { id: "parent", onscroll: action_scroll }, /* @__PURE__ */ h("div", { id: "child" }, "スクロールしてください")), /* @__PURE__ */ h("div", null, JSON.stringify(state.dom.margin))), /* @__PURE__ */ h(Route, { state, keyNames: ["tabName"], match: "page6" }, /* @__PURE__ */ h("h2", null, "Carousel"), /* @__PURE__ */ h("ul", { id: "carousel" }, Array.from({ length: 5 }).map((_, i) => /* @__PURE__ */ h("li", null, i))), /* @__PURE__ */ h("h2", null, "marqee"), /* @__PURE__ */ h("ul", { id: "marqee" }, Array.from({ length: 5 }).map((_, i) => /* @__PURE__ */ h("li", null, i)))))),
     subscriptions: (state) => [
       ...subscription_nodesCleanup([{
         id: "dom",
@@ -901,7 +1042,7 @@ addEventListener("load", () => {
           return state2;
         }
       }]),
-      subscription_RAFManager(state, ["tasks"])
+      subscription_RAFManager(state, ["subscriptions", "tasks"])
     ]
   });
 });

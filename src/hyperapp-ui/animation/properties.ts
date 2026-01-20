@@ -41,7 +41,7 @@ const GPU_LAYER = new Set(["transform", "opacity"])
  * @param   {(state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]} [props.finish] - 終了時アクション
  * @returns {(dispatch: Dispatch<S>) => void}
  */
-export const effect_RAFProperties = function <S>(
+export const effect_RAFProperties = function <S> (
 	props: {
 		id        : string,
 		keyNames  : string[],
@@ -57,7 +57,6 @@ export const effect_RAFProperties = function <S>(
 		// get tasks
 		const tasks = getValue(state, keyNames, [] as RAFTask<S>[])
 			.filter(task => task.id !== rafTask.id)
-			.sort((a, b) => ((b.priority ?? 0) - (a.priority ?? 0)))
 
 		// get progress
 		const progress = Math.min(

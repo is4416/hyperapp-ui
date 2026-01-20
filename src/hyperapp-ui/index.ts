@@ -2,10 +2,7 @@
 
 // core
 export { getValue, setValue, getLocalState, setLocalState } from "./core/state"
-export {
-	el, getClassList, deleteKeys,
-	Route, SelectButton, OptionButton
-} from "./core/component"
+export { el, getClassList, deleteKeys, Route, SelectButton, OptionButton} from "./core/component"
 
 // animation
 export { effect_throwMessageStart, effect_throwMessagePause, effect_throwMessageResume } from "./animation/step"
@@ -14,11 +11,9 @@ export { subscription_RAFManager} from "./animation/raf"
 export type { CSSProperty } from "./animation/properties"
 export { effect_RAFProperties} from "./animation/properties"
 export { progress_easing } from "./animation/easing"
+export { effect_carouselStart } from "./animation/carousel"
 
 // dom
 export type { ScrollMargin } from "./dom/utils"
-export { getScrollMargin } from "./dom/utils"
-export {
-	effect_setTimedValue, effect_nodesInitialize,
-	subscription_nodesCleanup, subscription_nodesLifecycleByIds
-} from "./dom/lifecycle"
+export { getScrollMargin, marqee } from "./dom/utils"
+export { effect_setTimedValue, effect_nodesInitialize, subscription_nodesCleanup, subscription_nodesLifecycleByIds } from "./dom/lifecycle"
