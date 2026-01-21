@@ -47,7 +47,7 @@ export const getScrollMargin = function (e: Event): ScrollMargin {
  * Carousel 風に DOM が流れるアニメーションを実行する
  * 
  * @param {Object}                 props          - props
- * @param {HTMLUListElement}       props.ul       - ul エレメント
+ * @param {HTMLElement}            props.element  - DOM
  * @param {number}                 props.duration - 実行時間 (ms)
  * @param {number}                 props.interval - 待機時間 (ms)
  * @param {(t: number) => number} [props.easing]  - easing 関数
@@ -55,17 +55,17 @@ export const getScrollMargin = function (e: Event): ScrollMargin {
  */
 export const marqee = function <S> (
 	props: {
-		ul      : HTMLUListElement
+		element : HTMLElement
 		duration: number
 		interval: number
 		easing ?: (t: number) => number
 	}
 ): { start: () => void, stop : () => void } {
-	const { ul, duration, interval, easing = (t: number) => t } = props
+	const { element, duration, interval, easing = (t: number) => t } = props
 
 	// function calcWidth
 	const calcWidth = () => {
-		const children = Array.from(ul.children) as HTMLLIElement[]
+		const children = Array.from(element.children) as HTMLElement[]
 		return !children || children.length < 2
 			? 0
 			: children[1].offsetLeft - children[0].offsetLeft
@@ -87,7 +87,7 @@ export const marqee = function <S> (
 		const progress = Math.min((now - startTime) / Math.max(1, duration))
 
 		// set property
-		ul.style.transform = `translateX(${ - easing(progress) * width }px)`
+		element.style.transform = `translateX(${ - easing(progress) * width }px)`
 
 		// next
 		if (progress < 1) {
@@ -96,40 +96,52 @@ export const marqee = function <S> (
 		}
 
 		// reset property
-		ul.style.transform = `translateX(0px)`
+		element.style.transform = `translateX(0px)`
 
 		// set children
-		const firstChild = ul.children[0]
+		const firstChild = element.children[0]
 		if (!firstChild) return
 
-		ul.appendChild(firstChild)
+		// loop
+		element.appendChild(firstChild)
 
 		// loop
 		timerID = window.setTimeout(() => {
 			startTime = 0
-			rID = requestAnimationFrame(action)
+			rID       = requestAnimationFrame(action)
 		}, interval)
 	}
 
 	// result
 	return {
 		start: () => {
+
+			// 二重起動防止
 			if (rID !== 0) return
 
+			// get width
 			width = calcWidth()
 			if (width === 0) return
 
-			ul.style.willChange = "transform"
+			// set gpu layer
+			element.style.willChange = "transform"
+
+			// start animation
 			rID = requestAnimationFrame(action)
 		},
 
 		stop : () => {
+			// cancel animation
 			cancelAnimationFrame(rID)
+
+			// stop timer
 			clearTimeout(timerID)
 
-			ul.style.willChange = ""
-			ul.style.transform = ""
+			// clear gpy layer
+			element.style.willChange = ""
+			element.style.transform  = ""
 
+			// clear ID
 			rID     = 0
 			timerID = 0
 		}

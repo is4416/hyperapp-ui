@@ -588,7 +588,7 @@ const subscription_RAFManager = function(state, keyNames) {
 };
 const GPU_LAYER = /* @__PURE__ */ new Set(["transform", "opacity"]);
 const effect_RAFProperties = function(props) {
-  const { id: id2, keyNames, duration, properties, finish } = props;
+  const { id: id2, keyNames, duration, properties, finish, extension } = props;
   const action = (state, rafTask) => {
     const tasks = getValue(state, keyNames, []).filter((task) => task.id !== rafTask.id);
     const progress = Math.min(
@@ -622,7 +622,10 @@ const effect_RAFProperties = function(props) {
         id: id2,
         duration,
         action,
-        extension: { properties }
+        extension: {
+          ...extension,
+          properties
+        }
       };
       return setValue(
         state,
@@ -673,11 +676,12 @@ const progress_easing = {
   }
 };
 const effect_carouselStart = function(props) {
-  const { id: id2, keyNames, duration, interval, easing = (t) => t } = props;
-  const createEffect = (width) => effect_RAFProperties({
+  const { id: id2, keyNames, duration, interval, easing = (t) => t, onchange } = props;
+  const createEffect = (width, index, total, timerID) => effect_RAFProperties({
     id: id2,
     keyNames,
     duration,
+    // properties
     properties: [{
       selector: `#${id2}`,
       rules: [{
@@ -685,18 +689,47 @@ const effect_carouselStart = function(props) {
         value: (progress) => `translateX(${-easing(progress) * width}px)`
       }]
     }],
+    // finish
     finish: (state, rafTask) => {
       return [state, (dispatch) => {
-        const parent = document.getElementById(rafTask.id);
+        const param = rafTask.extension.carouselState;
+        const newTask = {
+          ...rafTask,
+          extension: {
+            ...rafTask.extension,
+            carouselState: {
+              ...param,
+              index: param.index + 1 < param.total ? param.index + 1 : 0
+            }
+          }
+        };
+        const parent = document.getElementById(newTask.id);
         if (!parent) return;
         const children = Array.from(parent.children);
-        if (!children || children.length === 0) return;
+        if (!children || children.length < 2) return;
+        parent.style.transform = `translate(0px)`;
         const firstChild = children[0];
         parent.appendChild(firstChild);
-        parent.style.transform = `translateX(0px)`;
-        setTimeout(() => dispatch((state2) => [state2, createEffect(width)]), interval);
+        requestAnimationFrame(() => {
+          dispatch((state2) => {
+            return onchange ? onchange(state2, newTask) : { ...state2 };
+          });
+        });
+        const timerID2 = window.setTimeout(() => {
+          dispatch((state2) => [
+            state2,
+            createEffect(
+              parent.children[1].offsetLeft - parent.children[0].offsetLeft,
+              newTask.extension.carouselState.index,
+              children.length,
+              timerID2
+            )
+          ]);
+        }, interval);
       }];
-    }
+    },
+    // extension
+    extension: { carouselState: { index, total, timerID } }
   });
   return (dispatch) => {
     dispatch((state) => {
@@ -705,7 +738,7 @@ const effect_carouselStart = function(props) {
       const children = Array.from(parent.children);
       if (!children || children.length < 2) return state;
       const width = children[1].offsetLeft - children[0].offsetLeft;
-      return [state, createEffect(width)];
+      return [state, createEffect(width, 0, children.length, 0)];
     });
   };
 };
@@ -720,9 +753,9 @@ const getScrollMargin = function(e) {
   };
 };
 const marqee = function(props) {
-  const { ul, duration, interval, easing = (t) => t } = props;
+  const { element, duration, interval, easing = (t) => t } = props;
   const calcWidth = () => {
-    const children = Array.from(ul.children);
+    const children = Array.from(element.children);
     return !children || children.length < 2 ? 0 : children[1].offsetLeft - children[0].offsetLeft;
   };
   let rID = 0;
@@ -732,15 +765,15 @@ const marqee = function(props) {
   const action = (now) => {
     if (startTime === 0) startTime = now;
     const progress = Math.min((now - startTime) / Math.max(1, duration));
-    ul.style.transform = `translateX(${-easing(progress) * width}px)`;
+    element.style.transform = `translateX(${-easing(progress) * width}px)`;
     if (progress < 1) {
       rID = requestAnimationFrame(action);
       return;
     }
-    ul.style.transform = `translateX(0px)`;
-    const firstChild = ul.children[0];
+    element.style.transform = `translateX(0px)`;
+    const firstChild = element.children[0];
     if (!firstChild) return;
-    ul.appendChild(firstChild);
+    element.appendChild(firstChild);
     timerID = window.setTimeout(() => {
       startTime = 0;
       rID = requestAnimationFrame(action);
@@ -751,14 +784,14 @@ const marqee = function(props) {
       if (rID !== 0) return;
       width = calcWidth();
       if (width === 0) return;
-      ul.style.willChange = "transform";
+      element.style.willChange = "transform";
       rID = requestAnimationFrame(action);
     },
     stop: () => {
       cancelAnimationFrame(rID);
       clearTimeout(timerID);
-      ul.style.willChange = "";
-      ul.style.transform = "";
+      element.style.willChange = "";
+      element.style.transform = "";
       rID = 0;
       timerID = 0;
     }
@@ -823,6 +856,7 @@ const subscription_nodesCleanup = function(nodes) {
   ]);
 };
 const action_reset = (state) => ({
+  debug: "",
   tabName: "",
   selectButton: {
     selected: []
@@ -946,7 +980,7 @@ const action_carouselButtonClick = (state) => {
       const ul = document.getElementById("marqee");
       if (!ul) return state2;
       controls = marqee({
-        ul,
+        element: ul,
         duration: 2e3,
         interval: 1e3,
         easing: progress_easing.easeOutCubic
@@ -954,6 +988,10 @@ const action_carouselButtonClick = (state) => {
       controls.start();
       return state2;
     });
+  };
+  const action_carousel_onchange = (state2, rafTask) => {
+    const index = rafTask.extension.carouselState.index;
+    return setValue(state2, ["carousel", "index"], index);
   };
   return [
     state,
@@ -963,7 +1001,8 @@ const action_carouselButtonClick = (state) => {
       keyNames: ["subscriptions", "tasks"],
       duration: 2e3,
       interval: 1e3,
-      easing: progress_easing.easeOutCubic
+      easing: progress_easing.easeOutCubic,
+      onchange: action_carousel_onchange
     })
   ];
 };
@@ -976,6 +1015,7 @@ addEventListener("load", () => {
     return r;
   })();
   const param = {
+    debug: "init...",
     tabName: "",
     selectButton: {
       selected: []
@@ -996,6 +1036,9 @@ addEventListener("load", () => {
     },
     dom: {
       margin: { top: 0, left: 0, right: 0, bottom: 0 }
+    },
+    carousel: {
+      index: 0
     }
   };
   app({
@@ -1033,7 +1076,7 @@ addEventListener("load", () => {
         onclick: (state2) => [state2, effect_throwMessageResume("msg")]
       },
       "resume"
-    )), /* @__PURE__ */ h("h2", null, "rAF / Animation System"), /* @__PURE__ */ h("h3", null, "effect_rAFProperties - transform"), /* @__PURE__ */ h("button", { state, onclick: action_move, id: "raf" }, state.effect.easing), /* @__PURE__ */ h("br", null), /* @__PURE__ */ h("select", { onchange: action_setEasing }, easingList.map((p) => /* @__PURE__ */ h("option", null, p))), /* @__PURE__ */ h("h3", null, "effect_rAFProperties - font-size"), /* @__PURE__ */ h("button", { state, onclick: action_setProperties, id: "rafP" }, "font")), /* @__PURE__ */ h(Route, { state, keyNames: ["tabName"], match: "page4" }, /* @__PURE__ */ h("h2", null, "Subscriptions example"), /* @__PURE__ */ h("h2", null, "subscription_nodesCleanup"), /* @__PURE__ */ h("button", { type: "button", onclick: action_throwAction }, "throw action"), /* @__PURE__ */ h("button", { type: "button", onclick: action_toggleFinalize }, "toggle object"), state.subscriptions.finalize ? /* @__PURE__ */ h("span", { id: "dom" }, "object") : null), /* @__PURE__ */ h(Route, { state, keyNames: ["tabName"], match: "page5" }, /* @__PURE__ */ h("h2", null, "DOM / Event example"), /* @__PURE__ */ h("h3", null, "getScrollMargin"), /* @__PURE__ */ h("div", { id: "parent", onscroll: action_scroll }, /* @__PURE__ */ h("div", { id: "child" }, "スクロールしてください")), /* @__PURE__ */ h("div", null, JSON.stringify(state.dom.margin))), /* @__PURE__ */ h(Route, { state, keyNames: ["tabName"], match: "page6" }, /* @__PURE__ */ h("h2", null, "Carousel"), /* @__PURE__ */ h("ul", { id: "carousel" }, Array.from({ length: 5 }).map((_, i) => /* @__PURE__ */ h("li", null, i))), /* @__PURE__ */ h("h2", null, "marqee"), /* @__PURE__ */ h("ul", { id: "marqee" }, Array.from({ length: 5 }).map((_, i) => /* @__PURE__ */ h("li", null, i)))))),
+    )), /* @__PURE__ */ h("h2", null, "rAF / Animation System"), /* @__PURE__ */ h("h3", null, "effect_rAFProperties - transform"), /* @__PURE__ */ h("button", { state, onclick: action_move, id: "raf" }, state.effect.easing), /* @__PURE__ */ h("br", null), /* @__PURE__ */ h("select", { onchange: action_setEasing }, easingList.map((p) => /* @__PURE__ */ h("option", null, p))), /* @__PURE__ */ h("h3", null, "effect_rAFProperties - font-size"), /* @__PURE__ */ h("button", { state, onclick: action_setProperties, id: "rafP" }, "font")), /* @__PURE__ */ h(Route, { state, keyNames: ["tabName"], match: "page4" }, /* @__PURE__ */ h("h2", null, "Subscriptions example"), /* @__PURE__ */ h("h2", null, "subscription_nodesCleanup"), /* @__PURE__ */ h("button", { type: "button", onclick: action_throwAction }, "throw action"), /* @__PURE__ */ h("button", { type: "button", onclick: action_toggleFinalize }, "toggle object"), state.subscriptions.finalize ? /* @__PURE__ */ h("span", { id: "dom" }, "object") : null), /* @__PURE__ */ h(Route, { state, keyNames: ["tabName"], match: "page5" }, /* @__PURE__ */ h("h2", null, "DOM / Event example"), /* @__PURE__ */ h("h3", null, "getScrollMargin"), /* @__PURE__ */ h("div", { id: "parent", onscroll: action_scroll }, /* @__PURE__ */ h("div", { id: "child" }, "スクロールしてください")), /* @__PURE__ */ h("div", null, JSON.stringify(state.dom.margin))), /* @__PURE__ */ h(Route, { state, keyNames: ["tabName"], match: "page6" }, /* @__PURE__ */ h("h2", null, "Carousel"), /* @__PURE__ */ h("ul", { id: "carousel" }, Array.from({ length: 5 }).map((_, i) => /* @__PURE__ */ h("li", null, i))), /* @__PURE__ */ h("div", null, state.carousel.index), /* @__PURE__ */ h("h2", null, "marqee"), /* @__PURE__ */ h("ul", { id: "marqee" }, Array.from({ length: 5 }).map((_, i) => /* @__PURE__ */ h("li", null, i)))))),
     subscriptions: (state) => [
       ...subscription_nodesCleanup([{
         id: "dom",

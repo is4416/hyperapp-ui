@@ -126,7 +126,6 @@ input[type="text"] {
 
 	> li {
 		flex-shrink: 0;
-		margin     : 0.5rem;
 		width      : 25%;
 		border     : 1px gray solid;
 	}

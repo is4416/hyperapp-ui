@@ -39,6 +39,7 @@ const GPU_LAYER = new Set(["transform", "opacity"])
  * @param   {number}        props.duration   - 実行時間 (ms)
  * @param   {CSSProperty[]} props.properties - CSS設定オブジェクト配列
  * @param   {(state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]} [props.finish] - 終了時アクション
+ * @param   {any} [props.extension] - 拡張オプション
  * @returns {(dispatch: Dispatch<S>) => void}
  */
 export const effect_RAFProperties = function <S> (
@@ -47,10 +48,11 @@ export const effect_RAFProperties = function <S> (
 		keyNames  : string[],
 		duration  : number,
 		properties: CSSProperty[],
-		finish   ?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]
+		finish   ?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>],
+		extension?: any
 	}
 ): (dispatch : Dispatch<S>) => void {
-	const { id, keyNames, duration, properties, finish } = props
+	const { id, keyNames, duration, properties, finish, extension } = props
 
 	// action
 	const action = (state: S, rafTask: RAFTask<S>) => {
@@ -107,7 +109,10 @@ export const effect_RAFProperties = function <S> (
 
 			// newTask
 			const newTask: RAFTask<S> = {
-				id, duration, action, extension: { properties }
+				id, duration, action, extension: {
+					...extension,
+					properties: properties
+				}
 			}
 
 			// set value

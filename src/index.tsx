@@ -23,6 +23,7 @@ import {
 // ---------- ---------- ---------- ---------- ----------
 
 interface State {
+	debug  : string
 	tabName: string
 
 	selectButton: {
@@ -48,6 +49,10 @@ interface State {
 
 	dom: {
 		margin: ScrollMargin
+	},
+
+	carousel: {
+		index: number
 	}
 }
 
@@ -56,6 +61,7 @@ interface State {
 // ---------- ---------- ---------- ---------- ----------
 
 const action_reset = (state: State) => ({
+	debug     : "",
 	tabName   : "",
 
 	selectButton: {
@@ -233,7 +239,7 @@ const action_carouselButtonClick = (state: State) => {
 			if (!ul) return state
 
 			controls = marqee({
-				ul      : ul,
+				element : ul,
 				duration: 2000,
 				interval: 1000,
 				easing  : progress_easing.easeOutCubic
@@ -245,6 +251,13 @@ const action_carouselButtonClick = (state: State) => {
 		})
 	}
 
+	// carousel.onchange
+	const action_carousel_onchange = (state: State, rafTask: RAFTask<State>) => {
+		const index = rafTask.extension.carouselState.index
+		return setValue(state, ["carousel", "index"], index)
+	}
+
+	// result
 	return [
 		state,
 		effect_setMarqee,
@@ -253,7 +266,8 @@ const action_carouselButtonClick = (state: State) => {
 			keyNames: ["subscriptions", "tasks"],
 			duration: 2000,
 			interval: 1000,
-			easing  : progress_easing.easeOutCubic
+			easing  : progress_easing.easeOutCubic,
+			onchange: action_carousel_onchange
 		})
 	]
 }
@@ -275,6 +289,7 @@ addEventListener("load", () => {
 
 	// State
 	const param: State = {
+		debug  : "init...",
 		tabName: "",
 
 		selectButton: {
@@ -300,6 +315,10 @@ addEventListener("load", () => {
 
 		dom: {
 			margin: { top: 0, left: 0, right: 0, bottom: 0 },
+		},
+
+		carousel: {
+			index: 0
 		}
 	}
 
@@ -422,6 +441,7 @@ addEventListener("load", () => {
 					<ul id="carousel">{
 						Array.from({length: 5}).map((_, i) => (<li>{i}</li>))
 					}</ul>
+					<div>{ state.carousel.index }</div>
 
 					<h2>marqee</h2>
 					<ul id="marqee">{
