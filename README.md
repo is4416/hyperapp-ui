@@ -522,7 +522,8 @@ export const effect_RAFProperties = function <S>(
 		keyNames  : string[],
 		duration  : number,
 		properties: CSSProperty[],
-		finish   ?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]
+		finish   ?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>],
+		extension?: any
 	}
 ): (dispatch : Dispatch<S>) => void
 ```
@@ -533,6 +534,7 @@ export const effect_RAFProperties = function <S>(
 - props.duration  : 実行時間 (ms)
 - props.properties: CSS設定オブジェクト配列
 - props.finish   ?: 終了時アクション
+- props.extension?: 拡張オプション
 
 ---
 
@@ -542,11 +544,12 @@ export const effect_RAFProperties = function <S>(
 ```ts
 export const effect_carouselStart = function <S> (
 	props: {
-		id      : string
-		keyNames: string[]
-		duration: number
-		interval: number
-		easing? : (t: number) => number
+		id       : string
+		keyNames : string[]
+		duration : number
+		interval : number
+		easing?  : (t: number) => number
+		onchange?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]
 	}
 ): (dispatch: Dispatch<S>) => void
 ```
@@ -558,6 +561,7 @@ export const effect_carouselStart = function <S> (
 - props.duration: 実行時間 (ms)
 - props.interval: 待機時間 (ms)
 - props.easing  : easing 関数 (省略時は線形)
+- props.onchange: 実行時間終了後に呼ばれるイベント
 
 **説明**
 
