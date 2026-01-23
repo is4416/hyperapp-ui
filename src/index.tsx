@@ -14,7 +14,7 @@ import {
 	subscription_nodesCleanup, subscription_nodesLifecycleByIds,
 	effect_RAFProperties,
 	progress_easing,
-	ScrollMargin, getScrollMargin, marqee,
+	ScrollMargin, getScrollMargin, marquee,
 	effect_carouselStart,
 	effect_RAFPause, effect_RAFResume
 } from "./hyperapp-ui"
@@ -233,13 +233,13 @@ let controls: { start: () => void, stop: () => void } | null = null
 const action_carouselButtonClick = (state: State) => {
 	if (controls) controls.stop()
 
-	// marqee
-	const effect_setMarqee = (dispatch: Dispatch<State>) => {
+	// marquee
+	const effect_setMarquee = (dispatch: Dispatch<State>) => {
 		dispatch((state: State) => {
-			const ul = document.getElementById("marqee") as HTMLUListElement
+			const ul = document.getElementById("marquee") as HTMLUListElement
 			if (!ul) return state
 
-			controls = marqee({
+			controls = marquee({
 				element : ul,
 				duration: 2000,
 				interval: 1000,
@@ -261,7 +261,7 @@ const action_carouselButtonClick = (state: State) => {
 	// result
 	return [
 		state,
-		effect_setMarqee,
+		effect_setMarquee,
 		effect_carouselStart({
 			id      : "carousel",
 			keyNames: ["subscriptions", "tasks"],
@@ -464,8 +464,8 @@ addEventListener("load", () => {
 					}</ul>
 					<div>{ state.carousel.index }</div>
 
-					<h2>marqee</h2>
-					<ul id="marqee">{
+					<h2>marquee</h2>
+					<ul id="marquee">{
 						Array.from({length: 5}).map((_, i) => (<li>{i}</li>))
 					}</ul>
 				</Route>

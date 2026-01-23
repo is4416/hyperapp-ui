@@ -4,6 +4,18 @@ import { Dispatch, Effect, Subscription } from "hyperapp"
 import { getValue, setValue } from "../core/state"
 
 // ---------- ---------- ---------- ---------- ----------
+// type InternalEffect
+// ---------- ---------- ---------- ---------- ----------
+/**
+ * Dispatch の内部処理（finish / action）から呼び出されることを前提としたエフェクト
+ * Action の戻り値としては返されず、Dispatch の実行フロー内で直接実行される
+ *
+ * 型としては Effect<S> と同一
+ * 「Dispatch 内部専用」という役割と設計意図を明示するための型エイリアス
+ */
+export type InternalEffect<S> = Effect<S>
+
+// ---------- ---------- ---------- ---------- ----------
 // interface RAFRuntime
 // ---------- ---------- ---------- ---------- ----------
 /**
@@ -39,8 +51,8 @@ export interface RAFRuntime {
  * @property {number} [currentTime] - 現在時間
  * @property {number} [deltaTime]   - 前回からの実行時間
  * 
- * @property {(state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]}  action  - アクション
- * @property {(state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]} [finish] - 終了時アクション
+ * @property {(state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]}  action  - アクション
+ * @property {(state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]} [finish] - 終了時アクション
  * 
  * @property {RAFRuntime} runtime - mutable 処理を前提としたオブジェクト
  * 
@@ -57,8 +69,8 @@ export interface RAFTask <S> {
 	currentTime?: number
 	deltaTime  ?: number
 
-	action : (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]
-	finish?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]
+	action : (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
+	finish?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
 
 	// 即時反映が必要な mutable 処理を前提としたオブジェクト
 	// このプロパティは、ステートにセットする際にクローンしないこと

@@ -6,7 +6,7 @@ export { el, concatAction, getClassList, deleteKeys, Route, SelectButton, Option
 
 // animation
 export { effect_throwMessageStart, effect_throwMessagePause, effect_throwMessageResume } from "./animation/step"
-export type { RAFRuntime, RAFTask } from "./animation/raf"
+export type { InternalEffect, RAFRuntime, RAFTask } from "./animation/raf"
 export { subscription_RAFManager, effect_RAFPause, effect_RAFResume } from "./animation/raf"
 export type { CSSProperty } from "./animation/properties"
 export { createRAFProperties, effect_RAFProperties} from "./animation/properties"
@@ -16,5 +16,5 @@ export { createRAFCarousel, effect_carouselStart } from "./animation/carousel"
 
 // dom
 export type { ScrollMargin } from "./dom/utils"
-export { getScrollMargin, marqee } from "./dom/utils"
+export { getScrollMargin, marquee } from "./dom/utils"
 export { effect_setTimedValue, effect_nodesInitialize, subscription_nodesCleanup, subscription_nodesLifecycleByIds } from "./dom/lifecycle"

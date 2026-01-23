@@ -1,8 +1,8 @@
 // hyperapp-ui / animation / properties.ts
 
-import { Effect, Dispatch } from "hyperapp"
+import { Dispatch } from "hyperapp"
 import { getValue, setValue } from "../core/state"
-import { RAFTask } from "./raf"
+import { InternalEffect, RAFTask } from "./raf"
 
 // ---------- ---------- ---------- ---------- ----------
 // interface CSSProperty
@@ -36,7 +36,7 @@ export interface CSSProperty {
  * @param   {string[]}      props.keyNames   - RAFTaks 配列までのパス
  * @param   {number}        props.duration   - 実行時間 (ms)
  * @param   {CSSProperty[]} props.properties - CSS設定オブジェクト配列
- * @param   {(state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]} [props.finish] - 終了時アクション
+ * @param   {(state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]} [props.finish] - 終了時アクション
  * @param   {{[key: string]: any}} [props.extension] - 拡張オプション
  * @returns {RAFTask<S>}
  */
@@ -46,7 +46,7 @@ export const createRAFProperties = function <S> (
 		keyNames  : string[],
 		duration  : number,
 		properties: CSSProperty[],
-		finish   ?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>],
+		finish   ?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>],
 		extension?: { [key: string]: any }
 	}
 ): RAFTask<S> {
@@ -116,7 +116,7 @@ const GPU_LAYER = new Set(["transform", "opacity"])
  * @param   {string[]}      props.keyNames   - RAFTaks 配列までのパス
  * @param   {number}        props.duration   - 実行時間 (ms)
  * @param   {CSSProperty[]} props.properties - CSS設定オブジェクト配列
- * @param   {(state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]} [props.finish] - 終了時アクション
+ * @param   {(state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]} [props.finish] - 終了時アクション
  * @param   {{[key: string]: any}} [props.extension] - 拡張オプション
  * @returns {(dispatch: Dispatch<S>) => void}
  */
@@ -126,7 +126,7 @@ export const effect_RAFProperties = function <S> (
 		keyNames  : string[],
 		duration  : number,
 		properties: CSSProperty[],
-		finish   ?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>],
+		finish   ?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>],
 		extension?: {
 			[key: string]: any
 		}
@@ -139,9 +139,9 @@ export const effect_RAFProperties = function <S> (
 		dispatch((state: S) => {
 
 			// set gpu layer
-			properties.forEach(props => {
-				const doms = Array.from(document.querySelectorAll(props.selector)) as HTMLElement[]
-				const val = [...new Set(props.rules.map(r => r.name).filter(name => GPU_LAYER.has(name)))].join(",")
+			properties.forEach(p => {
+				const doms = Array.from(document.querySelectorAll(p.selector)) as HTMLElement[]
+				const val = [...new Set(p.rules.map(r => r.name).filter(name => GPU_LAYER.has(name)))].join(",")
 				doms.forEach(dom => dom.style.willChange = val)
 			})
 

@@ -4,10 +4,48 @@ requestAnimationFrame によるフレーム単位のアニメーションを、
 hyperappのステート管理と連携させたシステムです
 
 - ステートに RAFTask 配列を持ち、この情報をもとにフレーム単位でアニメーションが実行されます
-- ステートの値が変更された時点で、サブスクリプションにより requestAnimationFrame がセットされます
-- RAFTask に保存された情報によりアニメーションが処理され、必要に応じて次の requestAnimationFrame がセットされます
-- アニメーションは RAFTask.duration の時間 (ms) 実行され、必要に応じて finish イベントが実行されます
-- リアルタイム制御のため、ステート内の RAFTask.isDone は直接変更されます
+- ステートの値が変更された時点で、サブスクリプションにより `requestAnimationFrame` がセットされます
+- RAFTask に保存された情報によりアニメーションが処理され、必要に応じて次の `requestAnimationFrame` がセットされます
+- アニメーションは `RAFTask.duration` の時間 (ms) 実行され、必要に応じて `finish` イベントが実行されます
+- リアルタイム制御のため、ステート内の `RAFTask.runtime` オブジェクトは直接変更されます
+
+フロー図:
+```
+ステート変更
+   ↓
+サブスクリプション
+   ↓
+rAF 実行 (rafTask.action)
+   ↓
+終了処理 (rafTask.finish)
+```
+
+## フロー解説
+
+1. RAFTask の登録
+	- createRAFxxx で RAFTask を作成
+	- effect_RAFxxx でステートに登録（薄いラッパー）
+
+1. サブスクリプションによる実行管理
+	- subscription_RAFManager がステート上の RAFTask 配列を監視
+	- フレームごとに requestAnimationFrame をセットし、各 RAFTask に実行を通知
+
+1. 描画処理
+	- 各 RAFTask.action が描画やアニメーション処理を実行
+	- 任意でステートを更新したり、副作用を発生させることが可能
+
+1. 終了処理
+	- 描画完了後に RAFTask.finish がコールバックされる
+	- subscription_RAFManager が終了済みの RAFTask をステートから削除
+	- finish 内で次の RAFTask 登録がなければ処理は終了
+
+## 補足
+
+- RAFTask は データ構造＋描画ロジック を持つオブジェクト
+- createRAFxxx は RAFTask 作成用の補助関数
+- effect_RAFxxx は作成した RAFTask をステートに登録するための薄いラッパー
+- この構造により、ステート管理と rAF のリアルタイム描画が統合され、  
+  アニメーションの開始・進行・終了がすべてステート経由で追跡可能になります
 
 ## sample: button[id="app"] のフォントを、赤色に変更していく
 
@@ -60,9 +98,9 @@ app({
 
 ```
 
-## 解説
+### 解説
 
-properties には、CSSProperty[] を設定させる仕様としています
+`properties` には `CSSProperty[]` を設定させる仕様としています
 
 ```ts
 interface CSSProperty {
@@ -74,7 +112,7 @@ interface CSSProperty {
 }
 ```
 
-before / after 形式ではなく、進捗状況により CSS 値を出力させる関数としています  
+`before` / `after` 形式ではなく、進捗状況により CSS 値を出力させる関数としています  
 これにより複雑な形式の CSS 値を出力することができます
 
 例
@@ -87,12 +125,12 @@ rules: [{
 }]
 ```
 
-## 補足
+### 補足
 
-progress は、0から1までの数値を返します  
-value の関数を自由に決めることができるため、easing 処理なども実装できます  
+`progress` は、0から1までの数値を返します  
+`value` の関数を自由に決めることができるため、`easing` 処理なども実装できます  
 
-easing 用のプリセットも、別ファイルで用意しています。  
+`easing` 用のプリセットも、別ファイルで用意しています。  
 [progress_easing.ts](src/hyperapp-ui/animation/easing.ts)
 
 ## hyperapp でのコンポーネント初期化について
@@ -119,9 +157,67 @@ hyperapp にはライフサイクルイベントが採用されていないた�
 
 といったメリットがあります
 
----
+## raf.ts
 
-`subscription_nodesCleanup` は、DOM を監視してメモリリークを防止する目的で作成したサブスクリプションですが、  
-基本的には **DOM ではなくステートを追跡して制御する設計** が望ましいと考えています
+### InternalEffect
+Effectの型エイリアス  
+Dispatch の中から呼ばれるイベントの戻り値として設定されています  
+値を返さず、Dispatch 内部専用という役割を明示するものです
 
-そのため、`subscription_nodesCleanup` の出番はあまり多くないでしょう
+### RAFRuntime
+即時反映が必要な mutable 処理を前提としたオブジェクト  
+ステートにセットする際にクローンしないこと
+
+### RAFTask
+`requestAnimationFrame` 管理用オブジェクト  
+このオブジェクトは **情報管理と描画** を担当します  
+
+### subscription_RAFManager
+`requestAnimationFrame` を利用し `RAFTask` をフレームごとに実行するサブスクリプション  
+このサブスクリプションは **時間管理** を担当します
+
+### effect_RAFPause
+rAF アニメーションの一時停止を行うエフェクト
+
+### effect_RAFResume
+rAF アニメーションの一時停止からの再開を行うエフェクト
+ 
+## properties.ts
+
+### CSSProperty
+CSS設定オブジェクト  
+`RAFTask.extension.properties` に登録します
+
+### createRAFProperties
+`subscription_RAFManager` をベースにした CSS アニメーション RAFTask を作成する  
+このオブジェクトは **情報管理と描画** を担当します  
+
+### effect_RAFProperties
+`subscription_RAFManager` をベースにした CSS アニメーションエフェクト  
+このエフェクトは `createRAFProperties` により作成した `RAFTask` を  
+**ステートに登録** するための、薄いラッパーです
+
+## carousel.ts
+
+### CarouselState
+Carousel 管理用オブジェクト  
+`RAFTask.extension.carouselState` に登録します
+
+### createRAFCarousel
+`subscription_RAFManager` をベースにした Carousel アニメーション RAFTask を作成する  
+このオブジェクトは **情報管理と描画** を担当します  
+
+### effect_carouselStart
+`subscription_RAFManager` をベースにした Carousel アニメーションエフェクト  
+このエフェクトは `createRAFCarousel` により作成した `RAFTask` を  
+**ステートに登録** するための、薄いラッパーです
+
+## その他
+
+- `step.ts` は、rAF を使用したアニメーションライブラリではありません
+- `dom/utils` に存在する `marquee` は、カルーセルのような動作を提供しますが、単純な DOM 操作です  
+  制御もステート駆動ではなく、実行時に取得するコントローラーにより行います
+- `dom/lifecycle.ts` に存在する `subscription_nodesCleanup` は、  
+  DOM を監視してメモリリークを防止する目的で作成したサブスクリプションです  
+  基本的には **DOM ではなくステートを追跡して制御する設計** が望ましいと考えています  
+  そのため、`subscription_nodesCleanup` の出番はあまり多くないでしょう

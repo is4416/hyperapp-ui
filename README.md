@@ -32,6 +32,7 @@ JSX を使用する場合は `hyperapp-jsx-pragma` を前提としています�
 - [effect_throwMessageResume](#effect_throwmessagepause--effect_throwmessageresume)
 
 **animation / raf.ts**
+- [InternalEffect](#internaleffect)
 - [RAFRuntime](#rafruntime)
 - [RAFTask](#raftask)
 - [subscription_RAFManager](#subscription_rafmanager)
@@ -54,7 +55,7 @@ JSX を使用する場合は `hyperapp-jsx-pragma` を前提としています�
 **dom / utils.ts**
 - [ScrollMargin](#scrollmargin)
 - [getScrollMargin](#getscrollmargin)
-- [marqee](#marqee)
+- [marquee](#marquee)
 
 **dom / lifecycle.ts**
 - [effect_setTimedValue](#effect_settimedvalue)
@@ -106,6 +107,8 @@ Hyperapp はステートの形に制約がないため、コンポーネント�
 
 requestAnimationFrame を利用した処理
 
+- `InternalEffect`          : Dispatch の内部処理から呼び出されるエフェクトで、戻り値とならない  
+  設計意図を明示するための型エイリアス (型としては `Effect` と同一)
 - `RAFRuntime`              : 即時反映が必要な mutable 処理専用オブジェクト
 - `RAFTask`                 : rAF タスク定義オブジェクト
 - `subscription_RAFManager` : RAFTask をフレームごとに実行させるサブスクリプション  
@@ -145,7 +148,7 @@ DOM を直接扱うユーティリティ
 
 - `ScrollMargin`    : スクロールの余白を管理するオブジェクト
 - `getScrollMargin` : スクロールの余白を取得
-- `marqee`          : Carousel 風に DOM が流れるアニメーションを実行する
+- `marquee`          : Carousel 風に DOM が流れるアニメーションを実行する
 
 ---
 
@@ -178,6 +181,7 @@ src
      │  │   effect_throwMessageStart, effect_throwMessagePause, effect_throwMessageResume
      │  │
      │  ├ raf.ts
+     │  │   InternalEffect
      │  │   RAFRuntime
      │  │   RAFTask
      │  │   subscription_RAFManager
@@ -201,7 +205,7 @@ src
          ├ utils.ts
          │   ScrollMargin
          │   getScrollMargin
-         │   marqee
+         │   marquee
          │
          └ lifecycle.ts
               effect_setTimedValue
@@ -458,6 +462,31 @@ export const effect_throwMessageResume = function <S> (
 
 ---
 
+### InternalEffect
+Dispatch の内部処理（finish / action）から呼び出されることを前提としたエフェクト  
+Action の戻り値としては返されず、Dispatch の実行フロー内で直接実行される  
+型としては `Effect<S>` と同一で「Dispatch 内部専用」という役割と設計意図を明示するための型エイリアス
+
+```ts
+type InternalEffect<S> = Effect<S>
+```
+
+**説明**
+
+Dispatch で呼ばれるアクションでは、エフェクトを直接返すことはできません  
+しかし、非同期処理でエフェクトを使用したいこともあります
+
+このときアクションを `(state: S) => S | [S, Effect<S>]` とせず `(state: S) => S | [S, InternalEffect<S>]`とすることで、  
+エフェクトが戻り値とならないことを明示します ( Dispatch 内でエフェクトが戻せない罠対策です )
+
+**ポイント**
+
+- 戻り値として使用されず、Dispatch 内でのみ実行される
+- `Effect<S>` と同一
+- 内部専用であることを、型で明示
+
+---
+
 ### RAFRuntime
 `requestAnimationFrame` による処理において  
 即時反映が必要な mutable な実行状態を管理するオブジェクト
@@ -501,8 +530,8 @@ export interface RAFTask <S> {
 	currentTime?: number
 	deltaTime  ?: number
 
-	action : (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]
-	finish?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]
+	action : (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
+	finish?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
 
 	priority ?: number
 	runtime   : RAFRuntime
@@ -618,7 +647,7 @@ export const createRAFProperties = function <S> (
 		keyNames  : string[],
 		duration  : number,
 		properties: CSSProperty[],
-		finish   ?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>],
+		finish   ?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>],
 		extension?: { [key: string]: any }
 	}
 ): RAFTask<S>
@@ -651,7 +680,7 @@ export const effect_RAFProperties = function <S>(
 		keyNames  : string[],
 		duration  : number,
 		properties: CSSProperty[],
-		finish   ?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>],
+		finish   ?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>],
 		extension?: { [key: string]: any }
 	}
 ): (dispatch : Dispatch<S>) => void
@@ -701,7 +730,7 @@ export const createRAFCarousel = function <S> (
 		duration : number
 		interval : number
 		easing  ?: (t: number) => number
-		finish  ?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]
+		finish  ?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
 		extension: {
 			carouselState: CarouselState
 			[key: string]: any
@@ -739,7 +768,7 @@ export const effect_carouselStart = function <S> (
 		duration : number
 		interval : number
 		easing?  : (t: number) => number
-		onchange?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]
+		onchange?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
 	}
 ): (dispatch: Dispatch<S>) => void
 ```
@@ -754,14 +783,14 @@ export const effect_carouselStart = function <S> (
 
 **説明**
 
-現状、DOM/utils.ts の marqee とほぼ同じ動作になります  
-marqee は単純な DOM に対しての副作用で、Carousel としての動作は  
+現状、DOM/utils.ts の marquee とほぼ同じ動作になります  
+marquee は単純な DOM に対しての副作用で、Carousel としての動作は  
 ステート経由で rAF を制御しているこちらに集約されることになります
 
-marqee はステートを通さず直接 DOM に対して副作用を発生させるため  
-用途によっては marqee に優位性があります
+marquee はステートを通さず直接 DOM に対して副作用を発生させるため  
+用途によっては marquee に優位性があります
 
-- marqee : DOM 直接操作。軽量で即時反映
+- marquee : DOM 直接操作。軽量で即時反映
 - effect_carouselStart : Hyperapp のステート経由で管理。RAFManager と連携可能
 
 **重要**
@@ -870,11 +899,11 @@ export const getScrollMargin = function (e: Event): ScrollMargin
 
 ---
 
-### marqee
+### marquee
 Carousel 風に DOM が流れるアニメーションを実行します
 
 ```ts
-export const marqee = function <S> (
+export const marquee = function <S> (
 	props: {
 		ul      : HTMLUListElement
 		duration: number

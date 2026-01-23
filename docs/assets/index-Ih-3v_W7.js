@@ -651,9 +651,9 @@ const effect_RAFProperties = function(props) {
   const { id: id2, keyNames, properties } = props;
   return (dispatch) => {
     dispatch((state) => {
-      properties.forEach((props2) => {
-        const doms = Array.from(document.querySelectorAll(props2.selector));
-        const val = [...new Set(props2.rules.map((r) => r.name).filter((name) => GPU_LAYER.has(name)))].join(",");
+      properties.forEach((p) => {
+        const doms = Array.from(document.querySelectorAll(p.selector));
+        const val = [...new Set(p.rules.map((r) => r.name).filter((name) => GPU_LAYER.has(name)))].join(",");
         doms.forEach((dom) => dom.style.willChange = val);
       });
       const newTask = createRAFProperties(props);
@@ -807,7 +807,7 @@ const getScrollMargin = function(e) {
     bottom: el2.scrollHeight - (el2.clientHeight + el2.scrollTop)
   };
 };
-const marqee = function(props) {
+const marquee = function(props) {
   const { element, duration, interval, easing = (t) => t } = props;
   const calcWidth = () => {
     const children = Array.from(element.children);
@@ -1030,11 +1030,11 @@ const action_scroll = (state, e) => {
 let controls = null;
 const action_carouselButtonClick = (state) => {
   if (controls) controls.stop();
-  const effect_setMarqee = (dispatch) => {
+  const effect_setMarquee = (dispatch) => {
     dispatch((state2) => {
-      const ul = document.getElementById("marqee");
+      const ul = document.getElementById("marquee");
       if (!ul) return state2;
-      controls = marqee({
+      controls = marquee({
         element: ul,
         duration: 2e3,
         interval: 1e3,
@@ -1050,7 +1050,7 @@ const action_carouselButtonClick = (state) => {
   };
   return [
     state,
-    effect_setMarqee,
+    effect_setMarquee,
     effect_carouselStart({
       id: "carousel",
       keyNames: ["subscriptions", "tasks"],
@@ -1145,7 +1145,7 @@ addEventListener("load", () => {
         onmouseleave: action_carouselResume
       },
       Array.from({ length: 5 }).map((_, i) => /* @__PURE__ */ h("li", null, i))
-    ), /* @__PURE__ */ h("div", null, state.carousel.index), /* @__PURE__ */ h("h2", null, "marqee"), /* @__PURE__ */ h("ul", { id: "marqee" }, Array.from({ length: 5 }).map((_, i) => /* @__PURE__ */ h("li", null, i)))))),
+    ), /* @__PURE__ */ h("div", null, state.carousel.index), /* @__PURE__ */ h("h2", null, "marquee"), /* @__PURE__ */ h("ul", { id: "marquee" }, Array.from({ length: 5 }).map((_, i) => /* @__PURE__ */ h("li", null, i)))))),
     subscriptions: (state) => [
       ...subscription_nodesCleanup([{
         id: "dom",

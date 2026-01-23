@@ -41,7 +41,7 @@ export const getScrollMargin = function (e: Event): ScrollMargin {
 }
 
 // ---------- ---------- ---------- ---------- ----------
-// marqee
+// marquee
 // ---------- ---------- ---------- ---------- ----------
 /**
  * Carousel 風に DOM が流れるアニメーションを実行する
@@ -53,7 +53,7 @@ export const getScrollMargin = function (e: Event): ScrollMargin {
  * @param {(t: number) => number} [props.easing]  - easing 関数
  * @returns {{start: () => void, stop: () => void}}
  */
-export const marqee = function <S> (
+export const marquee = function <S> (
 	props: {
 		element : HTMLElement
 		duration: number

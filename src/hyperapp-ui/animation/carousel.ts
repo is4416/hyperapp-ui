@@ -1,7 +1,7 @@
-import { Dispatch, Effect } from "hyperapp";
+import { Dispatch } from "hyperapp";
 import { getValue, setValue } from "../core/state"
-import { RAFTask } from "./raf";
-import { CSSProperty, createRAFProperties, effect_RAFProperties } from "./properties";
+import { InternalEffect, RAFTask } from "./raf";
+import { CSSProperty, createRAFProperties } from "./properties";
 
 // ---------- ---------- ---------- ---------- ----------
 // interface CarouselState
@@ -31,7 +31,7 @@ export interface CarouselState {
  * @param {number}   props.duration - 実行時間 (ms)
  * @param {number}   props.interval - 待機時間 (ms)
  * @param {(t: number) => number} [props.easing] - easing 関数
- * @param {(state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]} [props.finish] - 終了時イベント
+ * @param {(state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]} [props.finish] - 終了時イベント
  * @param {{CarouselState, [key: string]: any}} props.extention - CSSProperty / CarouselState 拡張
  */
 export const createRAFCarousel = function <S> (
@@ -41,7 +41,7 @@ export const createRAFCarousel = function <S> (
 		duration : number
 		interval : number
 		easing  ?: (t: number) => number
-		finish  ?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]
+		finish  ?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
 		extension: {
 			carouselState: CarouselState
 			[key: string]: any
@@ -98,7 +98,7 @@ export const createRAFCarousel = function <S> (
  * @param {number}   props.interval - 待機時間 (ms)
  * 
  * @param {(t: number) => number} [props.easing] - easing 関数
- * @param {(state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]} [props.onchange]
+ * @param {(state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]} [props.onchange]
  *  - 実行時間終了後に呼ばれるイベント
  * 
  * @returns {(dispatch: Dispatch<S>) => void}
@@ -110,13 +110,13 @@ export const effect_carouselStart = function <S> (
 		duration : number
 		interval : number
 		easing  ?: (t: number) => number
-		onchange?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]
+		onchange?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
 	}
 ): (dispatch: Dispatch<S>) => void {
 	const { id, keyNames, duration, interval, easing = (t: number) => t, onchange } = props
 
 	// finish
-	const finish = (state: S, rafTask: RAFTask<S>): S | [S, Effect<S>] => {
+	const finish = (state: S, rafTask: RAFTask<S>): S | [S, InternalEffect<S>] => {
 		return [
 			state,
 			(dispatch: Dispatch<S>): void => {
