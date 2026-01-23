@@ -32,17 +32,23 @@ JSX を使用する場合は `hyperapp-jsx-pragma` を前提としています�
 - [effect_throwMessageResume](#effect_throwmessagepause--effect_throwmessageresume)
 
 **animation / raf.ts**
+- [RAFRuntime](#rafruntime)
 - [RAFTask](#raftask)
 - [subscription_RAFManager](#subscription_rafmanager)
+- [effect_RAFPause](#effect_rafpause)
+- [effect_RAFResume](#effect_rafresume)
 
 **animation / properties.ts**
 - [CSSProperty](#cssproperty)
+- [createRAFProperties](#createrafproperties)
 - [effect_RAFProperties](#effect_rafproperties)
 
 **animation / easing.ts**
 - [progress_easing](#progress_easing)
 
 **animation / carousel.ts**
+- [CarouselState](#carouselstate)
+- [createRAFCarousel](#createrafcarousel)
 - [effect_carouselStart](#effect_carouselstart)
 
 **dom / utils.ts**
@@ -69,7 +75,7 @@ Hyperapp はステートの形に制約がないため、コンポーネント�
 
 基本的なステート操作関数
 
-- `getValue` / `setValue` : パスを指定して値を取得・設定
+- `getValue` / `setValue`           : パスを指定して値を取得・設定
 - `getLocalState` / `setLocalState` : コンポーネント内部の一時状態を ID キーで管理
 
 ---
@@ -78,11 +84,11 @@ Hyperapp はステートの形に制約がないため、コンポーネント�
 
 基本コンポーネント設計関数
 
-- `el` : hyperapp h 関数のラッパー
+- `el`           : hyperapp h 関数のラッパー
 - `concatAction` : アクションを統合して結果を返す
 - `getClassList` : props から classList を取得
-- `deleteKeys` : props から不要なキーを削除
-- `Route` : ステート内の文字と match した時、VNode を返す
+- `deleteKeys`   : props から不要なキーを削除
+- `Route`        : ステート内の文字と match した時、VNode を返す
 - `SelectButton` / `OptionButton` : クリックで、クラス名 `select` をトグルするボタン
 
 ---
@@ -100,8 +106,12 @@ Hyperapp はステートの形に制約がないため、コンポーネント�
 
 requestAnimationFrame を利用した処理
 
-- `RAFTask` : rAF 管理用オブジェクト
-- `subscription_RAFManager` : RAFTask をフレームごとに実行させるサブスクリプション
+- `RAFRuntime`              : 即時反映が必要な mutable 処理専用オブジェクト
+- `RAFTask`                 : rAF タスク定義オブジェクト
+- `subscription_RAFManager` : RAFTask をフレームごとに実行させるサブスクリプション  
+  タスクの並び替え・進捗管理・終了判定を一括で行う
+- `effect_RAFPause` / `effect_RAFResume` : rAF アニメーションの一時停止 / 再開を行うエフェクト  
+  `RAFTask` を直接操作し、即時に反映される
 
 ---
 
@@ -109,7 +119,8 @@ requestAnimationFrame を利用した処理
 
 rAF を利用した CSS設定
 
-- `CSSProperty` : CSS 設定用オブジェクト
+- `CSSProperty`          : CSS 設定用オブジェクト
+- `createRAFProperties`  : CSS アニメーション RAFTask を作成する
 - `effect_RAFProperties` : rAF をベースにした、CSSアニメーションエフェクト
 
 ---
@@ -122,6 +133,8 @@ rAF を利用した CSS設定
 
 ### animation / carousel.ts
 
+- `CarouselState`        : Carousel 管理用オブジェクト
+- `createRAFCarousel`    : Carousel アニメーション RAFTask を作成する
 - `effect_carouselStart` : subscription_RAFManager をベースにした Carousel アニメーションエフェクト
 
 ---
@@ -140,8 +153,8 @@ DOM を直接扱うユーティリティ
 
 DOM のライフサイクルを管理するための関数
 
-- `effect_setTimedValue` : 存在時間制限付きの値をステートにセットするエフェクト
-- `effect_nodesInitialize` : DOM 生成後にノードを初期化するためのエフェクト
+- `effect_setTimedValue`      : 存在時間制限付きの値をステートにセットするエフェクト
+- `effect_nodesInitialize`    : DOM 生成後にノードを初期化するためのエフェクト
 - `subscription_nodesCleanup` : DOM が存在しない場合にクリーンアップ処理を行うためのサブスクリプション
 - `subscription_nodesLifecycleByIds` : 登録された id を元に DOM を監視し、初期化・終了処理を行うためのサブスクリプション
 
@@ -165,17 +178,23 @@ src
      │  │   effect_throwMessageStart, effect_throwMessagePause, effect_throwMessageResume
      │  │
      │  ├ raf.ts
+     │  │   RAFRuntime
      │  │   RAFTask
      │  │   subscription_RAFManager
+     │  │   effect_RAFPause
+     │  │   effect_RAFResume
      │  │
      │  ├ properties.ts
      │  │   CSSProperty
+     │  │   createRAFProperties
      │  │   effect_RAFProperties
      │  │
      │  ├ easing.ts
      │  │   progress_easing
      │  │
      │  └ carousel.ts
+     │       CarouselState
+     │       createRAFCarousel
      │       effect_carouselStart
      │
      └ dom
@@ -439,38 +458,85 @@ export const effect_throwMessageResume = function <S> (
 
 ---
 
+### RAFRuntime
+`requestAnimationFrame` による処理において  
+即時反映が必要な mutable な実行状態を管理するオブジェクト
+
+```ts
+export interface RAFRuntime {
+	paused: boolean
+	resume: boolean
+	isDone: boolean
+}
+```
+
+**重要**
+
+`RAFRuntime` は、mutable なオブジェクトとして扱われます  
+ステートにセットする際はクローンせず、参照を維持してください
+
+**概要**
+
+rAF のフレーム中に、即座に反映する必要がある状態を保持します  
+`subscription_RAFManager` が直接参照・更新します  
+ステートとは役割を分離しています
+
+- paused: 一時停止フラグ
+- resume: 再開フラグ
+- isDone: 処理終了フラグ
+
+---
+
 ### RAFTask
 requestAnimationFrame (rAF) を管理するためのオブジェクト
 
 ```ts
 export interface RAFTask <S> {
-	id          : string
-	duration    : number
+	id      : string
+	groupID?: number
+	duration: number
+
+	progress   ?: number
 	startTime  ?: number
 	currentTime?: number
 	deltaTime  ?: number
-	priority   ?: number
-	paused     ?: boolean
-	resume     ?: boolean
-	isDone     ?: boolean
-	action      : (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]
-	finish     ?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]
-	extension  ?: any
+
+	action : (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]
+	finish?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]
+
+	priority ?: number
+	runtime   : RAFRuntime
+	extension?: { [key: string]: any }
 }
 ```
 
-- id          : ユニークID
-- duration    : 1回あたりの処理時間 (ms)
+基本情報
+- id      : ユニークID
+- groupID?: グループナンバー (任意)
+- duration: 1回あたりの処理時間 (ms)
+
+時間情報 (内部管理用)
+- progress   ?: 進捗状況 (0 - 1)
 - startTime  ?: 開始時間
 - currentTime?: 現在時間
 - deltaTime  ?: 前回からの実行時間
-- priority   ?: 処理優先順位
-- paused     ?: 一時停止フラグ
-- resume     ?: 再開フラグ
-- isDone     ?: 処理終了フラグ
-- action      : アクション
-- finish     ?: 終了時アクション
-- extension  ?: 拡張用オプション
+
+アクション
+- action : アクション
+- finish?: 終了時アクション
+
+実行制御・拡張
+- priority ?: 処理優先順位
+- runtime   : runtime (mutable)
+- extension?: 拡張用オプション
+
+**重要**
+action / finish は、Dispatch 内で実行されるため、エフェクトを返すことができません  
+(dispatch の再入・無限ループを防ぐための制約です)  
+エフェクトが必要な場合、`setTimeout` / `setInterval` / `requestAnimationFrame`  
+などの非同期境界を必ず挟んでください
+
+例: ` requestAnimationFrame(() => dispatch(...))`
 
 ---
 
@@ -489,6 +555,36 @@ export const subscription_RAFManager = function <S> (
 - keyNames: RAFTask 配列までのパス
 
 [詳細説明](animation-system.md)
+
+---
+
+### effect_RAFPause
+rAF アニメーションの一時停止を行うエフェクト
+
+```ts
+export const effect_RAFPause = function <S> (
+	id      : string,
+	keyNames: string[]
+): (dispatch: Dispatch<S>) => void
+```
+
+- id      : ユニークID
+- keyNames: RAFTask 配列までのパス
+
+---
+
+### effect_RAFResume
+rAF アニメーションの一時停止からの再開を行うエフェクト
+
+```ts
+export const effect_RAFResume = function <S> (
+	id      : string,
+	keyNames: string[]
+): (dispatch: Dispatch<S>) => void
+```
+
+- id      : ユニークID
+- keyNames: RAFTask 配列までのパス
 
 ---
 
@@ -512,6 +608,39 @@ export interface CSSProperty {
 
 ---
 
+### createRAFProperties
+subscription_RAFManager をベースにした CSS アニメーション RAFTask を作成する
+
+```ts
+export const createRAFProperties = function <S> (
+	props: {
+		id        : string,
+		keyNames  : string[],
+		duration  : number,
+		properties: CSSProperty[],
+		finish   ?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>],
+		extension?: { [key: string]: any }
+	}
+): RAFTask<S>
+```
+- props           : props
+- props.id        : ユニークID
+- props.keyNames  : RAFTask 配列までのパス
+- props.duration  : 実行時間 (ms)
+- props.properties: CSS設定オブジェクト配列
+- props.finish   ?: 終了時アクション
+- extension      ?: 拡張オプション
+
+**重要**
+finish は、Dispatch 内で実行されるため、エフェクトを返すことができません  
+(dispatch の再入・無限ループを防ぐための制約です)  
+エフェクトが必要な場合、`setTimeout` / `setInterval` / `requestAnimationFrame`  
+などの非同期境界を必ず挟んでください
+
+例: ` requestAnimationFrame(() => dispatch(...))`
+
+---
+
 ### effect_RAFProperties
 CSS プロパティをフレーム単位で段階的に変更
 
@@ -523,7 +652,7 @@ export const effect_RAFProperties = function <S>(
 		duration  : number,
 		properties: CSSProperty[],
 		finish   ?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>],
-		extension?: any
+		extension?: { [key: string]: any }
 	}
 ): (dispatch : Dispatch<S>) => void
 ```
@@ -535,6 +664,67 @@ export const effect_RAFProperties = function <S>(
 - props.properties: CSS設定オブジェクト配列
 - props.finish   ?: 終了時アクション
 - props.extension?: 拡張オプション
+
+**重要**
+finish は、Dispatch 内で実行されるため、エフェクトを返すことができません  
+(dispatch の再入・無限ループを防ぐための制約です)  
+エフェクトが必要な場合、`setTimeout` / `setInterval` / `requestAnimationFrame`  
+などの非同期境界を必ず挟んでください
+
+例: ` requestAnimationFrame(() => dispatch(...))`
+
+---
+
+### CarouselState
+Carousel 管理用オブジェクト
+
+```ts
+export interface CarouselState {
+	index  : number
+	total  : number
+}
+```
+
+- index: 先頭のインデックス
+- total: 子の数
+
+---
+
+### createRAFCarousel
+subscription_RAFManager をベースにした Carousel アニメーション RAFTask を作成する
+
+```ts
+export const createRAFCarousel = function <S> (
+	props: {
+		id       : string
+		keyNames : string[]
+		duration : number
+		interval : number
+		easing  ?: (t: number) => number
+		finish  ?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]
+		extension: {
+			carouselState: CarouselState
+			[key: string]: any
+		}
+	}
+): RAFTask<S>
+```
+
+- props.id       : ユニークID (DOM の id と同一)
+- props.keyNames : RAFTask 配列までのパス
+- props.duration : 実行時間 (ms)
+- props.interval : 待機時間 (ms)
+- props.easing   : easing 関数
+- props.finish   : 終了時イベント
+- props.extension: CSSProperty / CarouselState 拡張
+
+**重要**
+finish は、Dispatch 内で実行されるため、エフェクトを返すことができません  
+(dispatch の再入・無限ループを防ぐための制約です)  
+エフェクトが必要な場合、`setTimeout` / `setInterval` / `requestAnimationFrame`  
+などの非同期境界を必ず挟んでください
+
+例: ` requestAnimationFrame(() => dispatch(...))`
 
 ---
 
@@ -553,7 +743,6 @@ export const effect_carouselStart = function <S> (
 	}
 ): (dispatch: Dispatch<S>) => void
 ```
-*ほぼ effect_CSSProperties のラッパーになっています*
 
 **パラメータ**
 - props.id      : ユニークID (DOM の id と同一)
@@ -574,6 +763,14 @@ marqee はステートを通さず直接 DOM に対して副作用を発生さ�
 
 - marqee : DOM 直接操作。軽量で即時反映
 - effect_carouselStart : Hyperapp のステート経由で管理。RAFManager と連携可能
+
+**重要**
+onchange は、Dispatch 内で実行されるため、エフェクトを返すことができません  
+(dispatch の再入・無限ループを防ぐための制約です)  
+エフェクトが必要な場合、`setTimeout` / `setInterval` / `requestAnimationFrame`  
+などの非同期境界を必ず挟んでください
+
+例: ` requestAnimationFrame(() => dispatch(...))`
 
 ---
 

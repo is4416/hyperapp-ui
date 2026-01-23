@@ -5,7 +5,7 @@
 import { app, VNode, Dispatch } from "hyperapp"
 import h from "hyperapp-jsx-pragma"
 import {
-	setValue,
+	getValue, setValue,
 	Route, SelectButton, OptionButton,
 	effect_nodesInitialize,
 	effect_setTimedValue,
@@ -15,7 +15,8 @@ import {
 	effect_RAFProperties,
 	progress_easing,
 	ScrollMargin, getScrollMargin, marqee,
-	effect_carouselStart
+	effect_carouselStart,
+	effect_RAFPause, effect_RAFResume
 } from "./hyperapp-ui"
 
 // ---------- ---------- ---------- ---------- ----------
@@ -253,7 +254,7 @@ const action_carouselButtonClick = (state: State) => {
 
 	// carousel.onchange
 	const action_carousel_onchange = (state: State, rafTask: RAFTask<State>) => {
-		const index = rafTask.extension.carouselState.index
+		const index = rafTask.extension?.carouselState.index
 		return setValue(state, ["carousel", "index"], index)
 	}
 
@@ -270,6 +271,22 @@ const action_carouselButtonClick = (state: State) => {
 			onchange: action_carousel_onchange
 		})
 	]
+}
+
+// ---------- ---------- ---------- ---------- ----------
+// action_carouselPause
+// ---------- ---------- ---------- ---------- ----------
+
+const action_carouselPause = (state: State) => {
+	return [state, effect_RAFPause("carousel", ["subscriptions", "tasks"])]
+}
+
+// ---------- ---------- ---------- ---------- ----------
+// action_carouselResume
+// ---------- ---------- ---------- ---------- ----------
+
+const action_carouselResume = (state: State) => {
+	return [state, effect_RAFResume("carousel", ["subscriptions", "tasks"])]
 }
 
 // ---------- ---------- ---------- ---------- ----------
@@ -438,7 +455,11 @@ addEventListener("load", () => {
 				{/* *** page6: Carousel *** */}
 				<Route state={state} keyNames={["tabName"]} match="page6">
 					<h2>Carousel</h2>
-					<ul id="carousel">{
+					<ul
+						id           = "carousel"
+						onmouseenter = { action_carouselPause }
+						onmouseleave = { action_carouselResume }
+					>{
 						Array.from({length: 5}).map((_, i) => (<li>{i}</li>))
 					}</ul>
 					<div>{ state.carousel.index }</div>

@@ -19,9 +19,87 @@ import { RAFTask } from "./raf"
 export interface CSSProperty {
 	selector: string
 	rules   : {
-		name    : string
-		value   : (progress: number) => string
+		name : string
+		value: (progress: number) => string
 	}[]
+}
+
+// ---------- ---------- ---------- ---------- ----------
+// createRAFProperties
+// ---------- ---------- ---------- ---------- ----------
+/**
+ * subscription_RAFManager をベースにした CSS アニメーション RAFTask を作成する
+ * 
+ * @template S
+ * @param   {Object}        props            - props
+ * @param   {string}        props.id         - ユニークID
+ * @param   {string[]}      props.keyNames   - RAFTaks 配列までのパス
+ * @param   {number}        props.duration   - 実行時間 (ms)
+ * @param   {CSSProperty[]} props.properties - CSS設定オブジェクト配列
+ * @param   {(state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]} [props.finish] - 終了時アクション
+ * @param   {{[key: string]: any}} [props.extension] - 拡張オプション
+ * @returns {RAFTask<S>}
+ */
+export const createRAFProperties = function <S> (
+	props: {
+		id        : string,
+		keyNames  : string[],
+		duration  : number,
+		properties: CSSProperty[],
+		finish   ?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>],
+		extension?: { [key: string]: any }
+	}
+): RAFTask<S> {
+	const { id, keyNames, duration, properties, finish, extension } = props
+
+	// action
+	const action = (state: S, rafTask: RAFTask<S>) => {
+		// get tasks
+		const tasks = getValue(state, keyNames, [] as RAFTask<S>[])
+			.filter(task => task.id !== rafTask.id)
+
+		// set property
+		const list: CSSProperty[] = rafTask.extension?.properties
+		const elements = list
+			? Array.from(new Set(
+				list.flatMap(props => {
+					const doms = Array.from(document.querySelectorAll(props.selector)) as HTMLElement[]
+					doms.forEach(dom => {
+						props.rules.forEach(r => dom.style.setProperty(r.name, r.value((rafTask.progress ?? 0))))
+					})
+					return doms
+				})
+			)) as HTMLElement[]
+			: []
+
+		// next
+		if ((rafTask.progress ?? 0) < 1) return state
+
+		// finish
+		rafTask.runtime.isDone = true
+
+		// release gpu layer
+		elements.forEach(dom => dom.style.willChange = "")
+
+		// newState
+		const newState = setValue(state, keyNames, tasks)
+
+		return finish ? finish(newState, rafTask) : newState
+	}
+
+	// result
+	return {
+		id, duration, action, finish,
+		runtime: {
+			paused: false,
+			resume: false,
+			isDone: false
+		},
+		extension: {
+			...extension,
+			properties
+		}
+	}
 }
 
 // ---------- ---------- ---------- ---------- ----------
@@ -39,7 +117,7 @@ const GPU_LAYER = new Set(["transform", "opacity"])
  * @param   {number}        props.duration   - 実行時間 (ms)
  * @param   {CSSProperty[]} props.properties - CSS設定オブジェクト配列
  * @param   {(state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>]} [props.finish] - 終了時アクション
- * @param   {any} [props.extension] - 拡張オプション
+ * @param   {{[key: string]: any}} [props.extension] - 拡張オプション
  * @returns {(dispatch: Dispatch<S>) => void}
  */
 export const effect_RAFProperties = function <S> (
@@ -49,52 +127,12 @@ export const effect_RAFProperties = function <S> (
 		duration  : number,
 		properties: CSSProperty[],
 		finish   ?: (state: S, rafTask: RAFTask<S>) => S | [S, Effect<S>],
-		extension?: any
+		extension?: {
+			[key: string]: any
+		}
 	}
 ): (dispatch : Dispatch<S>) => void {
-	const { id, keyNames, duration, properties, finish, extension } = props
-
-	// action
-	const action = (state: S, rafTask: RAFTask<S>) => {
-		// get tasks
-		const tasks = getValue(state, keyNames, [] as RAFTask<S>[])
-			.filter(task => task.id !== rafTask.id)
-
-		// get progress
-		const progress = Math.min(
-			1,
-			((rafTask.currentTime ?? 0) - (rafTask.startTime ?? 0)) /
-			Math.max(1, rafTask.duration)
-		)
-
-		// set property
-		const list: CSSProperty[] = rafTask.extension.properties
-		const elements = list
-			? Array.from(new Set(
-				list.flatMap(props => {
-					const doms = Array.from(document.querySelectorAll(props.selector)) as HTMLElement[]
-					doms.forEach(dom => {
-						props.rules.forEach(r => dom.style.setProperty(r.name, r.value(progress)))
-					})
-					return doms
-				})
-			)) as HTMLElement[]
-			: []
-
-		// next
-		if (progress < 1) return state
-
-		// finish
-		rafTask.isDone = true
-
-		// release gpu layer
-		elements.forEach(dom => dom.style.willChange = "")
-
-		// newState
-		const newState = setValue(state, keyNames, tasks)
-
-		return finish ? finish(newState, rafTask) : newState
-	}
+	const { id, keyNames, properties } = props
 
 	// result
 	return (dispatch: Dispatch<S>) => {
@@ -108,12 +146,7 @@ export const effect_RAFProperties = function <S> (
 			})
 
 			// newTask
-			const newTask: RAFTask<S> = {
-				id, duration, action, extension: {
-					...extension,
-					properties: properties
-				}
-			}
+			const newTask = createRAFProperties(props)
 
 			// set value
 			return setValue(

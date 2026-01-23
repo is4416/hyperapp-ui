@@ -546,30 +546,31 @@ const subscription_RAFManager = function(state, keyNames) {
         dispatch((state2) => {
           const tasks = [...getValue(state2, keyNames, [])].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
           const newTasks = tasks.flatMap((task) => {
-            if (task.paused && !task.resume) {
+            if (task.runtime.paused && !task.runtime.resume) {
               return [{
                 ...task,
                 currentTime: task.currentTime,
                 deltaTime: 0
               }];
             }
-            if (task.isDone) return [];
+            if (task.runtime.isDone) return [];
             const newTask = {
               ...task,
-              startTime: task.resume ? (task.startTime ?? now) + (now - (task.currentTime ?? now)) : task.startTime ?? now,
+              startTime: task.runtime.resume ? (task.startTime ?? now) + (now - (task.currentTime ?? now)) : task.startTime ?? now,
               currentTime: now,
-              deltaTime: now - (task.currentTime ?? now),
-              paused: false,
-              resume: void 0
+              deltaTime: now - (task.currentTime ?? now)
             };
-            const progress = Math.min(
+            newTask.runtime.paused = false;
+            newTask.runtime.resume = false;
+            newTask.progress = Math.min(
               1,
               (now - (newTask.startTime ?? now)) / Math.max(1, newTask.duration)
             );
-            if (newTask.startTime !== void 0 && now >= newTask.startTime) dispatch([task.action, newTask]);
-            if (!task.isDone && progress >= 1) {
-              newTask.isDone = true;
-              if (task.finish) dispatch([task.finish, newTask]);
+            if (newTask.startTime !== void 0 && now >= newTask.startTime) dispatch((state3) => newTask.action(state3, newTask));
+            if (!newTask.runtime.isDone && newTask.progress >= 1) {
+              newTask.runtime.isDone = true;
+              const finish = newTask.finish;
+              if (finish) dispatch((state3) => finish(state3, newTask));
               return [];
             }
             return [newTask];
@@ -586,31 +587,68 @@ const subscription_RAFManager = function(state, keyNames) {
     [...getValue(state, keyNames, [])].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
   ];
 };
-const GPU_LAYER = /* @__PURE__ */ new Set(["transform", "opacity"]);
-const effect_RAFProperties = function(props) {
+const effect_RAFPause = function(id2, keyNames) {
+  return (dispatch) => {
+    dispatch((state) => {
+      const tasks = getValue(state, keyNames, []);
+      const task = tasks.find((task2) => task2.id === id2);
+      if (!task) return state;
+      task.runtime.paused = true;
+      task.runtime.resume = false;
+      return setValue(state, keyNames, [...tasks]);
+    });
+  };
+};
+const effect_RAFResume = function(id2, keyNames) {
+  return (dispatch) => {
+    dispatch((state) => {
+      const tasks = getValue(state, keyNames, []);
+      const task = tasks.find((task2) => task2.id === id2);
+      if (!task) return state;
+      task.runtime.resume = true;
+      return setValue(state, keyNames, [...tasks]);
+    });
+  };
+};
+const createRAFProperties = function(props) {
   const { id: id2, keyNames, duration, properties, finish, extension } = props;
   const action = (state, rafTask) => {
     const tasks = getValue(state, keyNames, []).filter((task) => task.id !== rafTask.id);
-    const progress = Math.min(
-      1,
-      ((rafTask.currentTime ?? 0) - (rafTask.startTime ?? 0)) / Math.max(1, rafTask.duration)
-    );
-    const list = rafTask.extension.properties;
+    const list = rafTask.extension?.properties;
     const elements = list ? Array.from(new Set(
       list.flatMap((props2) => {
         const doms = Array.from(document.querySelectorAll(props2.selector));
         doms.forEach((dom) => {
-          props2.rules.forEach((r) => dom.style.setProperty(r.name, r.value(progress)));
+          props2.rules.forEach((r) => dom.style.setProperty(r.name, r.value(rafTask.progress ?? 0)));
         });
         return doms;
       })
     )) : [];
-    if (progress < 1) return state;
-    rafTask.isDone = true;
+    if ((rafTask.progress ?? 0) < 1) return state;
+    rafTask.runtime.isDone = true;
     elements.forEach((dom) => dom.style.willChange = "");
     const newState = setValue(state, keyNames, tasks);
     return finish ? finish(newState, rafTask) : newState;
   };
+  return {
+    id: id2,
+    duration,
+    action,
+    finish,
+    runtime: {
+      paused: false,
+      resume: false,
+      isDone: false
+    },
+    extension: {
+      ...extension,
+      properties
+    }
+  };
+};
+const GPU_LAYER = /* @__PURE__ */ new Set(["transform", "opacity"]);
+const effect_RAFProperties = function(props) {
+  const { id: id2, keyNames, properties } = props;
   return (dispatch) => {
     dispatch((state) => {
       properties.forEach((props2) => {
@@ -618,15 +656,7 @@ const effect_RAFProperties = function(props) {
         const val = [...new Set(props2.rules.map((r) => r.name).filter((name) => GPU_LAYER.has(name)))].join(",");
         doms.forEach((dom) => dom.style.willChange = val);
       });
-      const newTask = {
-        id: id2,
-        duration,
-        action,
-        extension: {
-          ...extension,
-          properties
-        }
-      };
+      const newTask = createRAFProperties(props);
       return setValue(
         state,
         keyNames,
@@ -675,70 +705,95 @@ const progress_easing = {
     return t === 0 ? 0 : t === 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
   }
 };
+const createRAFCarousel = function(props) {
+  const { id: id2, keyNames, duration, interval, easing = (t) => t, finish, extension } = props;
+  const result = createRAFProperties({ id: id2, keyNames, duration, properties: [], finish, extension });
+  result.startTime = performance.now() + interval;
+  result.runtime.isDone = true;
+  const parent = document.getElementById(id2);
+  if (!parent) return result;
+  const children = Array.from(parent.children);
+  if (!children || children.length < 2) return result;
+  const width = children[1].offsetLeft - children[0].offsetLeft;
+  const properties = [{
+    selector: `#${id2}`,
+    rules: [{
+      name: "transform",
+      value: (progress) => `translateX(${-easing(progress) * width}px)`
+    }]
+  }];
+  result.extension = {
+    ...result.extension,
+    properties
+  };
+  result.runtime.isDone = false;
+  return result;
+};
 const effect_carouselStart = function(props) {
   const { id: id2, keyNames, duration, interval, easing = (t) => t, onchange } = props;
-  const createEffect = (width, index, total, timerID) => effect_RAFProperties({
-    id: id2,
-    keyNames,
-    duration,
-    // properties
-    properties: [{
-      selector: `#${id2}`,
-      rules: [{
-        name: "transform",
-        value: (progress) => `translateX(${-easing(progress) * width}px)`
-      }]
-    }],
-    // finish
-    finish: (state, rafTask) => {
-      return [state, (dispatch) => {
-        const param = rafTask.extension.carouselState;
-        const newTask = {
-          ...rafTask,
-          extension: {
-            ...rafTask.extension,
-            carouselState: {
-              ...param,
-              index: param.index + 1 < param.total ? param.index + 1 : 0
-            }
-          }
-        };
-        const parent = document.getElementById(newTask.id);
+  const finish = (state, rafTask) => {
+    return [
+      state,
+      (dispatch) => {
+        const tasks = getValue(state, keyNames, []).filter((task) => task.id !== rafTask.id);
+        const parent = document.getElementById(rafTask.id);
         if (!parent) return;
         const children = Array.from(parent.children);
         if (!children || children.length < 2) return;
-        parent.style.transform = `translate(0px)`;
+        parent.style.transform = `translateX(0px)`;
         const firstChild = children[0];
         parent.appendChild(firstChild);
-        requestAnimationFrame(() => {
-          dispatch((state2) => {
-            return onchange ? onchange(state2, newTask) : { ...state2 };
-          });
+        const param = rafTask.extension?.carouselState;
+        const carouselState = {
+          index: param.index + 1 < param.total ? param.index + 1 : 0,
+          total: children.length
+        };
+        const extension = {
+          ...rafTask.extension,
+          carouselState
+        };
+        const newTask = createRAFCarousel({
+          id: id2,
+          keyNames,
+          duration,
+          interval,
+          easing,
+          finish,
+          extension
         });
-        const timerID2 = window.setTimeout(() => {
-          dispatch((state2) => [
-            state2,
-            createEffect(
-              parent.children[1].offsetLeft - parent.children[0].offsetLeft,
-              newTask.extension.carouselState.index,
-              children.length,
-              timerID2
-            )
-          ]);
-        }, interval);
-      }];
-    },
-    // extension
-    extension: { carouselState: { index, total, timerID } }
-  });
+        if (onchange) {
+          requestAnimationFrame(() => {
+            dispatch((state2) => onchange(state2, newTask));
+          });
+        }
+        requestAnimationFrame(() => {
+          dispatch((state2) => setValue(state2, keyNames, tasks.concat(newTask)));
+        });
+      }
+    ];
+  };
   return (dispatch) => {
     dispatch((state) => {
       const parent = document.getElementById(id2);
       if (!parent) return state;
       const children = Array.from(parent.children);
       if (!children || children.length < 2) return state;
-      const width = children[1].offsetLeft - children[0].offsetLeft;
-      return [state, createEffect(width, 0, children.length, 0)];
+      const tasks = getValue(state, keyNames, []).filter((task) => task.id !== id2);
+      const newTask = createRAFCarousel({
+        id: id2,
+        keyNames,
+        duration,
+        interval,
+        easing,
+        finish,
+        extension: {
+          carouselState: {
+            index: 0,
+            total: children.length
+          }
+        }
+      });
+      return setValue(state, keyNames, tasks.concat(newTask));
     });
   };
 };
@@ -990,7 +1045,7 @@ const action_carouselButtonClick = (state) => {
     });
   };
   const action_carousel_onchange = (state2, rafTask) => {
-    const index = rafTask.extension.carouselState.index;
+    const index = rafTask.extension?.carouselState.index;
     return setValue(state2, ["carousel", "index"], index);
   };
   return [
@@ -1005,6 +1060,12 @@ const action_carouselButtonClick = (state) => {
       onchange: action_carousel_onchange
     })
   ];
+};
+const action_carouselPause = (state) => {
+  return [state, effect_RAFPause("carousel", ["subscriptions", "tasks"])];
+};
+const action_carouselResume = (state) => {
+  return [state, effect_RAFResume("carousel", ["subscriptions", "tasks"])];
 };
 addEventListener("load", () => {
   const easingList = (() => {
@@ -1076,7 +1137,15 @@ addEventListener("load", () => {
         onclick: (state2) => [state2, effect_throwMessageResume("msg")]
       },
       "resume"
-    )), /* @__PURE__ */ h("h2", null, "rAF / Animation System"), /* @__PURE__ */ h("h3", null, "effect_rAFProperties - transform"), /* @__PURE__ */ h("button", { state, onclick: action_move, id: "raf" }, state.effect.easing), /* @__PURE__ */ h("br", null), /* @__PURE__ */ h("select", { onchange: action_setEasing }, easingList.map((p) => /* @__PURE__ */ h("option", null, p))), /* @__PURE__ */ h("h3", null, "effect_rAFProperties - font-size"), /* @__PURE__ */ h("button", { state, onclick: action_setProperties, id: "rafP" }, "font")), /* @__PURE__ */ h(Route, { state, keyNames: ["tabName"], match: "page4" }, /* @__PURE__ */ h("h2", null, "Subscriptions example"), /* @__PURE__ */ h("h2", null, "subscription_nodesCleanup"), /* @__PURE__ */ h("button", { type: "button", onclick: action_throwAction }, "throw action"), /* @__PURE__ */ h("button", { type: "button", onclick: action_toggleFinalize }, "toggle object"), state.subscriptions.finalize ? /* @__PURE__ */ h("span", { id: "dom" }, "object") : null), /* @__PURE__ */ h(Route, { state, keyNames: ["tabName"], match: "page5" }, /* @__PURE__ */ h("h2", null, "DOM / Event example"), /* @__PURE__ */ h("h3", null, "getScrollMargin"), /* @__PURE__ */ h("div", { id: "parent", onscroll: action_scroll }, /* @__PURE__ */ h("div", { id: "child" }, "スクロールしてください")), /* @__PURE__ */ h("div", null, JSON.stringify(state.dom.margin))), /* @__PURE__ */ h(Route, { state, keyNames: ["tabName"], match: "page6" }, /* @__PURE__ */ h("h2", null, "Carousel"), /* @__PURE__ */ h("ul", { id: "carousel" }, Array.from({ length: 5 }).map((_, i) => /* @__PURE__ */ h("li", null, i))), /* @__PURE__ */ h("div", null, state.carousel.index), /* @__PURE__ */ h("h2", null, "marqee"), /* @__PURE__ */ h("ul", { id: "marqee" }, Array.from({ length: 5 }).map((_, i) => /* @__PURE__ */ h("li", null, i)))))),
+    )), /* @__PURE__ */ h("h2", null, "rAF / Animation System"), /* @__PURE__ */ h("h3", null, "effect_rAFProperties - transform"), /* @__PURE__ */ h("button", { state, onclick: action_move, id: "raf" }, state.effect.easing), /* @__PURE__ */ h("br", null), /* @__PURE__ */ h("select", { onchange: action_setEasing }, easingList.map((p) => /* @__PURE__ */ h("option", null, p))), /* @__PURE__ */ h("h3", null, "effect_rAFProperties - font-size"), /* @__PURE__ */ h("button", { state, onclick: action_setProperties, id: "rafP" }, "font")), /* @__PURE__ */ h(Route, { state, keyNames: ["tabName"], match: "page4" }, /* @__PURE__ */ h("h2", null, "Subscriptions example"), /* @__PURE__ */ h("h2", null, "subscription_nodesCleanup"), /* @__PURE__ */ h("button", { type: "button", onclick: action_throwAction }, "throw action"), /* @__PURE__ */ h("button", { type: "button", onclick: action_toggleFinalize }, "toggle object"), state.subscriptions.finalize ? /* @__PURE__ */ h("span", { id: "dom" }, "object") : null), /* @__PURE__ */ h(Route, { state, keyNames: ["tabName"], match: "page5" }, /* @__PURE__ */ h("h2", null, "DOM / Event example"), /* @__PURE__ */ h("h3", null, "getScrollMargin"), /* @__PURE__ */ h("div", { id: "parent", onscroll: action_scroll }, /* @__PURE__ */ h("div", { id: "child" }, "スクロールしてください")), /* @__PURE__ */ h("div", null, JSON.stringify(state.dom.margin))), /* @__PURE__ */ h(Route, { state, keyNames: ["tabName"], match: "page6" }, /* @__PURE__ */ h("h2", null, "Carousel"), /* @__PURE__ */ h(
+      "ul",
+      {
+        id: "carousel",
+        onmouseenter: action_carouselPause,
+        onmouseleave: action_carouselResume
+      },
+      Array.from({ length: 5 }).map((_, i) => /* @__PURE__ */ h("li", null, i))
+    ), /* @__PURE__ */ h("div", null, state.carousel.index), /* @__PURE__ */ h("h2", null, "marqee"), /* @__PURE__ */ h("ul", { id: "marqee" }, Array.from({ length: 5 }).map((_, i) => /* @__PURE__ */ h("li", null, i)))))),
     subscriptions: (state) => [
       ...subscription_nodesCleanup([{
         id: "dom",
