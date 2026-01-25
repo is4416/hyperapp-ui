@@ -971,16 +971,12 @@ const action_move = (state) => {
     keyNames: ["subscriptions", "tasks"],
     duration: 1e3,
     properties: [{
-      selector: "#raf",
-      rules: [
-        {
-          name: "transform",
-          value: (progress) => {
-            const fn = progress_easing[state.effect.easing];
-            return `translate(${fn(progress) * 10}rem, 0)`;
-          }
+      ["#raf"]: {
+        "transform": (progress) => {
+          const fn = progress_easing[state.effect.easing];
+          return `translate(${fn(progress) * 10}rem, 0)`;
         }
-      ]
+      }
     }],
     finish: (state2, rafTask) => {
       const dom = document.getElementById(rafTask.id);
@@ -1002,21 +998,12 @@ const action_setProperties = (state) => {
     id: "rafP",
     keyNames: ["subscriptions", "tasks"],
     duration: 1e3,
-    properties: [
-      {
-        selector: "#rafP",
-        rules: [
-          {
-            name: "font-size",
-            value: (progress) => `${1 + progress * 3}rem`
-          },
-          {
-            name: "margin",
-            value: (progress) => `0.5rem 0 0.5rem ${2 + progress * 5}rem`
-          }
-        ]
+    properties: [{
+      "#rafP": {
+        "font-size": (progress) => `${1 + progress * 3}rem`,
+        "margin": (progress) => `0.5rem 0 0.5rem ${2 + progress * 5}rem`
       }
-    ],
+    }],
     finish: (state2, rafTask) => {
       const dom = document.getElementById(rafTask.id);
       if (!dom) return state2;

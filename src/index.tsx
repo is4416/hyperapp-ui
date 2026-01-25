@@ -144,16 +144,12 @@ const action_move = (state: State) => {
 		duration: 1000,
 
 		properties: [{
-			selector: "#raf",
-			rules   : [
-				{
-					name : "transform",
-					value: (progress: number) => {
-						const fn = progress_easing[state.effect.easing]
-						return `translate(${ fn(progress) * 10}rem, 0)`
-					}
+			["#raf"]: {
+				"transform": (progress: number) => {
+					const fn = progress_easing[state.effect.easing]
+					return `translate(${ fn(progress) * 10}rem, 0)`
 				}
-			]
+			}
 		}],
 
 		finish: (state: State, rafTask: RAFTask<State>) => {
@@ -188,21 +184,12 @@ const action_setProperties = (state: State) => {
 		id        : "rafP",
 		keyNames  : ["subscriptions", "tasks"],
 		duration  : 1000,
-		properties: [
-			{
-				selector: "#rafP",
-				rules: [
-					{
-						name : "font-size",
-						value: (progress: number) => `${ 1 + (progress * 3) }rem`
-					},
-					{
-						name: "margin",
-						value: (progress: number) => `0.5rem 0 0.5rem ${ 2 + progress * 5}rem`
-					}
-				]
-			},
-		],
+		properties: [{
+			"#rafP": {
+				"font-size": (progress: number) => `${ 1 + (progress * 3) }rem`,
+				"margin"   : (progress: number) => `0.5rem 0 0.5rem ${ 2 + progress * 5}rem`
+			}
+		}],
 		finish: (state: State, rafTask: RAFTask<State>) => {
 			const dom = document.getElementById(rafTask.id)
 			if (!dom) return state
