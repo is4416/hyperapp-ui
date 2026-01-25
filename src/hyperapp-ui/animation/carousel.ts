@@ -68,11 +68,9 @@ export const createRAFCarousel = function <S> (
 
 	// set properties
 	const properties: CSSProperty[] = [{
-		selector: `#${ id }`,
-		rules: [{
-			name : "transform",
-			value: (progress: number) => `translateX(${ - easing(progress) * width }px)`
-		}]
+		[`#${ id }`]: {
+			"transform": (progress: number) => `translateX(${ - easing(progress) * width }px)`
+		}
 	}]
 
 	result.extension = {

@@ -8,20 +8,16 @@ import { InternalEffect, RAFTask } from "./raf"
 // interface CSSProperty
 // ---------- ---------- ---------- ---------- ----------
 /**
- * CSS設定オブジェクト
- * 
- * @type {Object} CSSProperty
- * @property {string}                                                selector    - セレクター
- * @property {{name: string, value: (progress: number) => string}[]} rules       - ルール
- * @property {string}                                                rules.name  - プロパティ名
- * @property {(progress: number) => string}                          rules.value - CSS 値
+ * アニメーション進捗 (0〜1) を受け取り CSS 値を返す関数
+ *
+ * @type {Object.<string, Object.<string, (progress: number) => string>>} CSSProperty
+ * @property {Object.<string, (progress: number) => string>} [selector]
+ * @param {number} progress
  */
 export interface CSSProperty {
-	selector: string
-	rules   : {
-		name : string
-		value: (progress: number) => string
-	}[]
+	[selector: string]: {
+		[name: string]: (progress: number) => string
+	}
 }
 
 // ---------- ---------- ---------- ---------- ----------
@@ -59,18 +55,28 @@ export const createRAFProperties = function <S> (
 			.filter(task => task.id !== rafTask.id)
 
 		// set property
-		const list: CSSProperty[] = rafTask.extension?.properties
-		const elements = list
-			? Array.from(new Set(
-				list.flatMap(props => {
-					const doms = Array.from(document.querySelectorAll(props.selector)) as HTMLElement[]
-					doms.forEach(dom => {
-						props.rules.forEach(r => dom.style.setProperty(r.name, r.value((rafTask.progress ?? 0))))
-					})
-					return doms
+		const list: CSSProperty[] = rafTask.extension?.properties ?? []
+
+		const elements = Array.from(new Set(
+			list.flatMap(p => {
+				const selector = Object.keys(p)[0]
+				const rules    = p[selector]
+
+				// get DOMS
+				const doms = Array.from(document.querySelectorAll<HTMLElement>(selector))
+
+				// set style
+				doms.forEach(dom => {
+					for (const name in rules) {
+						const fn = rules[name]
+						dom.style.setProperty(name, fn(rafTask.progress ?? 0))
+					}
 				})
-			)) as HTMLElement[]
-			: []
+
+				// result
+				return doms
+			})
+		))
 
 		// next
 		if ((rafTask.progress ?? 0) < 1) return state
@@ -140,8 +146,12 @@ export const effect_RAFProperties = function <S> (
 
 			// set gpu layer
 			properties.forEach(p => {
-				const doms = Array.from(document.querySelectorAll(p.selector)) as HTMLElement[]
-				const val = [...new Set(p.rules.map(r => r.name).filter(name => GPU_LAYER.has(name)))].join(",")
+				const selector = Object.keys(p)[0]
+				const rules    = p[selector]
+
+				const doms = Array.from(document.querySelectorAll<HTMLElement>(selector))
+				const val  = Object.keys(rules).filter(name => GPU_LAYER.has(name)).join(",")
+
 				doms.forEach(dom => dom.style.willChange = val)
 			})
 

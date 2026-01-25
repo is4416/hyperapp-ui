@@ -614,16 +614,21 @@ const createRAFProperties = function(props) {
   const { id: id2, keyNames, duration, properties, finish, extension } = props;
   const action = (state, rafTask) => {
     const tasks = getValue(state, keyNames, []).filter((task) => task.id !== rafTask.id);
-    const list = rafTask.extension?.properties;
-    const elements = list ? Array.from(new Set(
-      list.flatMap((props2) => {
-        const doms = Array.from(document.querySelectorAll(props2.selector));
+    const list = rafTask.extension?.properties ?? [];
+    const elements = Array.from(new Set(
+      list.flatMap((p) => {
+        const selector = Object.keys(p)[0];
+        const rules = p[selector];
+        const doms = Array.from(document.querySelectorAll(selector));
         doms.forEach((dom) => {
-          props2.rules.forEach((r) => dom.style.setProperty(r.name, r.value(rafTask.progress ?? 0)));
+          for (const name in rules) {
+            const fn = rules[name];
+            dom.style.setProperty(name, fn(rafTask.progress ?? 0));
+          }
         });
         return doms;
       })
-    )) : [];
+    ));
     if ((rafTask.progress ?? 0) < 1) return state;
     rafTask.runtime.isDone = true;
     elements.forEach((dom) => dom.style.willChange = "");
@@ -652,8 +657,10 @@ const effect_RAFProperties = function(props) {
   return (dispatch) => {
     dispatch((state) => {
       properties.forEach((p) => {
-        const doms = Array.from(document.querySelectorAll(p.selector));
-        const val = [...new Set(p.rules.map((r) => r.name).filter((name) => GPU_LAYER.has(name)))].join(",");
+        const selector = Object.keys(p)[0];
+        const rules = p[selector];
+        const doms = Array.from(document.querySelectorAll(selector));
+        const val = Object.keys(rules).filter((name) => GPU_LAYER.has(name)).join(",");
         doms.forEach((dom) => dom.style.willChange = val);
       });
       const newTask = createRAFProperties(props);
@@ -716,11 +723,9 @@ const createRAFCarousel = function(props) {
   if (!children || children.length < 2) return result;
   const width = children[1].offsetLeft - children[0].offsetLeft;
   const properties = [{
-    selector: `#${id2}`,
-    rules: [{
-      name: "transform",
-      value: (progress) => `translateX(${-easing(progress) * width}px)`
-    }]
+    [`#${id2}`]: {
+      "transform": (progress) => `translateX(${-easing(progress) * width}px)`
+    }
   }];
   result.extension = {
     ...result.extension,

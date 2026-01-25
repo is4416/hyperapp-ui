@@ -622,18 +622,16 @@ CSS設定用オブジェクト
 
 ```ts
 export interface CSSProperty {
-	selector: string
-	rules   : {
-		name    : string
-		value   : (progress: number) => string
-	}[]
+	[selector: string]: {
+		[name: string]: (progress: number) => string
+	}
 }
 ```
 
-- selector   : セレクター
-- rules      : ルールの配列
-- rules.name : プロパティ名
-- rules.value: CSS 値を計算する関数
+- selector: セレクター
+- selector.[name] => fn
+	- name: CSS プロパティ名
+	- fn(progress): CSS 値を計算する関数
 
 ---
 
