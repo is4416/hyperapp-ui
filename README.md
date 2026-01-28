@@ -491,13 +491,22 @@ Dispatch で呼ばれるアクションでは、エフェクトを直接返す�
 `requestAnimationFrame` による処理において  
 即時反映が必要な mutable な実行状態を管理するオブジェクト
 
+
 ```ts
 export interface RAFRuntime {
-	paused: boolean
-	resume: boolean
-	isDone: boolean
+	startTime  ?: number
+	currentTime?: number
+	pausedTime ?: number
+	paused     ?: boolean
+	isDone     ?: boolean
 }
 ```
+
+- startTime  ?: アクション開始時間
+- currentTime?: 実行時間
+- pausedTime ?: 一時停止時間
+- paused     ?: 一時停止フラグ
+- isDone     ?: 処理終了フラグ
 
 **重要**
 
@@ -510,10 +519,6 @@ rAF のフレーム中に、即座に反映する必要がある状態を保持�
 `subscription_RAFManager` が直接参照・更新します  
 ステートとは役割を分離しています
 
-- paused: 一時停止フラグ
-- resume: 再開フラグ
-- isDone: 処理終了フラグ
-
 ---
 
 ### RAFTask
@@ -522,41 +527,39 @@ requestAnimationFrame (rAF) を管理するためのオブジェクト
 ```ts
 export interface RAFTask <S> {
 	id      : string
-	groupID?: number
+	groupID?: string
 	duration: number
+	delay  ?: number
 
-	progress   ?: number
-	startTime  ?: number
-	currentTime?: number
-	deltaTime  ?: number
+	progress  ?: number
+	deltaTime ?: number
 
 	action : (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
 	finish?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
 
+	runtime: RAFRuntime
 	priority ?: number
-	runtime   : RAFRuntime
 	extension?: { [key: string]: any }
 }
 ```
 
 基本情報
 - id      : ユニークID
-- groupID?: グループナンバー (任意)
+- groupID?: グループID
 - duration: 1回あたりの処理時間 (ms)
+- delay  ?: 開始までの待機時間 (ms)
 
 時間情報 (内部管理用)
-- progress   ?: 進捗状況 (0 - 1)
-- startTime  ?: 開始時間
-- currentTime?: 現在時間
-- deltaTime  ?: 前回からの実行時間
+- progress ?: 進捗状況 (0 - 1)
+- deltaTime?: 前回からの実行時間
 
 アクション
 - action : アクション
 - finish?: 終了時アクション
 
 実行制御・拡張
-- priority ?: 処理優先順位
 - runtime   : runtime (mutable)
+- priority ?: 処理優先順位
 - extension?: 拡張用オプション
 
 **重要**
@@ -641,22 +644,24 @@ subscription_RAFManager をベースにした CSS アニメーション RAFTask 
 ```ts
 export const createRAFProperties = function <S> (
 	props: {
-		id        : string,
-		keyNames  : string[],
-		duration  : number,
-		properties: CSSProperty[],
-		finish   ?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>],
+		id      : string
+		groupID?: string
+		duration: number
+		delay  ?: number
+
+		finish?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
+
+		priority ?: number
 		extension?: { [key: string]: any }
+
+		properties: CSSProperty[]
 	}
 ): RAFTask<S>
 ```
-- props           : props
-- props.id        : ユニークID
-- props.keyNames  : RAFTask 配列までのパス
-- props.duration  : 実行時間 (ms)
-- props.properties: CSS設定オブジェクト配列
-- props.finish   ?: 終了時アクション
-- extension      ?: 拡張オプション
+
+props は、基本的に RAFTask の値
+
+- properties: セレクタとスタイル設定のセット配列
 
 **重要**
 finish は、Dispatch 内で実行されるため、エフェクトを返すことができません  
@@ -674,23 +679,26 @@ CSS プロパティをフレーム単位で段階的に変更
 ```ts
 export const effect_RAFProperties = function <S>(
 	props: {
-		id        : string,
-		keyNames  : string[],
-		duration  : number,
-		properties: CSSProperty[],
-		finish   ?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>],
+		id      : string
+		groupID?: string
+		duration: number
+		delay  ?: number
+
+		finish?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
+
+		priority ?: number
 		extension?: { [key: string]: any }
+
+		properties: CSSProperty[]
+		keyNames  : string[]
 	}
 ): (dispatch : Dispatch<S>) => void
 ```
 
-- props           : props
-- props.id        : ユニークID
-- props.keyNames  : RAFTask 配列までのパス
-- props.duration  : 実行時間 (ms)
-- props.properties: CSS設定オブジェクト配列
-- props.finish   ?: 終了時アクション
-- props.extension?: 拡張オプション
+props は、基本的に RAFTask の値
+
+- properties: セレクタとスタイル設定のセット配列
+- keyNames  : RAFTask 配列までのパス
 
 **重要**
 finish は、Dispatch 内で実行されるため、エフェクトを返すことができません  
@@ -707,11 +715,13 @@ Carousel 管理用オブジェクト
 
 ```ts
 export interface CarouselState {
-	index  : number
-	total  : number
+	width: number
+	index: number
+	total: number
 }
 ```
 
+- width: 移動量
 - index: 先頭のインデックス
 - total: 子の数
 
@@ -723,27 +733,25 @@ subscription_RAFManager をベースにした Carousel アニメーション RAF
 ```ts
 export const createRAFCarousel = function <S> (
 	props: {
-		id       : string
-		keyNames : string[]
-		duration : number
-		interval : number
-		easing  ?: (t: number) => number
-		finish  ?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
-		extension: {
-			carouselState: CarouselState
-			[key: string]: any
-		}
+		id      : string
+		groupID?: string
+		duration: number
+		delay   : number
+
+		finish?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
+
+		priority ?: number
+		extension?: { [key: string]: any }
+
+		easing ?: (t: number) => number
+		carouselState: CarouselState
 	}
 ): RAFTask<S>
 ```
 
-- props.id       : ユニークID (DOM の id と同一)
-- props.keyNames : RAFTask 配列までのパス
-- props.duration : 実行時間 (ms)
-- props.interval : 待機時間 (ms)
-- props.easing   : easing 関数
-- props.finish   : 終了時イベント
-- props.extension: CSSProperty / CarouselState 拡張
+- props は、基本的に RAFTask の値
+- easing       : easing 関数
+- carouselState: カルーセル情報
 
 **重要**
 finish は、Dispatch 内で実行されるため、エフェクトを返すことができません  
@@ -761,27 +769,29 @@ finish は、Dispatch 内で実行されるため、エフェクトを返すこ�
 ```ts
 export const effect_carouselStart = function <S> (
 	props: {
-		id       : string
-		keyNames : string[]
-		duration : number
-		interval : number
-		easing?  : (t: number) => number
-		onchange?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
+		id      : string
+		groupID?: string
+		duration: number
+		delay   : number
+
+		finish?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
+
+		priority ?: number
+		extension?: { [key: string]: any }
+
+		easing ?: (t: number) => number
+
+		keyNames: string[]
 	}
 ): (dispatch: Dispatch<S>) => void
 ```
 
-**パラメータ**
-- props.id      : ユニークID (DOM の id と同一)
-- props.keyNames: RAFTask 配列までのパス
-- props.duration: 実行時間 (ms)
-- props.interval: 待機時間 (ms)
-- props.easing  : easing 関数 (省略時は線形)
-- props.onchange: 実行時間終了後に呼ばれるイベント
+- props は、基本的に RAFTask の値
+- easing  : easing 関数
+- keyNames: RAFTask 配列までのパス
 
 **説明**
 
-現状、DOM/utils.ts の marquee とほぼ同じ動作になります  
 marquee は単純な DOM に対しての副作用で、Carousel としての動作は  
 ステート経由で rAF を制御しているこちらに集約されることになります
 
@@ -792,7 +802,7 @@ marquee はステートを通さず直接 DOM に対して副作用を発生さ�
 - effect_carouselStart : Hyperapp のステート経由で管理。RAFManager と連携可能
 
 **重要**
-onchange は、Dispatch 内で実行されるため、エフェクトを返すことができません  
+finish は、Dispatch 内で実行されるため、エフェクトを返すことができません  
 (dispatch の再入・無限ループを防ぐための制約です)  
 エフェクトが必要な場合、`setTimeout` / `setInterval` / `requestAnimationFrame`  
 などの非同期境界を必ず挟んでください

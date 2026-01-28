@@ -7,7 +7,8 @@ hyperappのステート管理と連携させたシステムです
 - ステートの値が変更された時点で、サブスクリプションにより `requestAnimationFrame` がセットされます
 - RAFTask に保存された情報によりアニメーションが処理され、必要に応じて次の `requestAnimationFrame` がセットされます
 - アニメーションは `RAFTask.duration` の時間 (ms) 実行され、必要に応じて `finish` イベントが実行されます
-- リアルタイム制御のため、ステート内の `RAFTask.runtime` オブジェクトは直接変更されます
+- リアルタイム制御のため、ステート内の `RAFTask.runtime` オブジェクトは直接変更されます  
+（フレーム単位の時間管理を immutable update で行うとオーバーヘッドが大きいため）
 
 フロー図:
 ```
@@ -43,7 +44,7 @@ rAF 実行 (rafTask.action)
 
 - RAFTask は データ構造＋描画ロジック を持つオブジェクト
 - createRAFxxx は RAFTask 作成用の補助関数
-- effect_RAFxxx は作成した RAFTask をステートに登録するための薄いラッパー
+- effect_RAFxxx は作成した RAFTask をステートに登録するためのラッパー
 - この構造により、ステート管理と rAF のリアルタイム描画が統合され、  
   アニメーションの開始・進行・終了がすべてステート経由で追跡可能になります
 
@@ -57,16 +58,14 @@ const action = (state: State) => {
 		keyNames  : ["tasks"],
 		duration  : 1000,
 		properties: [{
-			selector: "#app",
-			rules: [{
-				name: "color",
-				value: (progress: number) => {
+			["#app"]: {
+				"color": (progress: number) => {
 					const r = 255 * progress
 					const g = 0
 					const b = 0
 					return `rgb(${r}, ${g}, ${b})`
 				}
-			}]
+			}
 		}]
 	})
 
@@ -92,7 +91,8 @@ app({
 	)
 
 	subscriptions: (state: State) => [
-		subscription_RAFManager(state, ["tasks"]) // subscription_RAFManager でサブスクリプションを生成して追加
+		// RAFTask 配列を監視、実行開始・終了を制御するサブスクリプションを登録
+		subscription_RAFManager(state, ["tasks"])
 	]
 })
 
@@ -104,11 +104,9 @@ app({
 
 ```ts
 interface CSSProperty {
-	selector: string
-	rules: {
-		name : string
-		value: (progress: number) => string
-	}[]
+	[selector: string]: {
+		[name: string]: (progress: number) => string
+	}
 }
 ```
 
@@ -117,18 +115,19 @@ interface CSSProperty {
 
 例
 ```ts
-rules: [{
-	name : "transform",
-	value: (progress: number) => {
-		return `translate(${ 100 * progress }px, ${ 3 * progress }rem)`
+{
+	["#hogre"]: {
+		"transform": (progress: number) => {
+			return `translate(${ 100 * progress }px, ${ 3 * progress }rem)`
+		}
 	}
-}]
+}
 ```
 
 ### 補足
 
 `progress` は、0から1までの数値を返します  
-`value` の関数を自由に決めることができるため、`easing` 処理なども実装できます  
+関数を自由に決めることができるため、`easing` 処理なども実装できます
 
 `easing` 用のプリセットも、別ファイルで用意しています。  
 [progress_easing.ts](src/hyperapp-ui/animation/easing.ts)
@@ -195,7 +194,7 @@ CSS設定オブジェクト
 ### effect_RAFProperties
 `subscription_RAFManager` をベースにした CSS アニメーションエフェクト  
 このエフェクトは `createRAFProperties` により作成した `RAFTask` を  
-**ステートに登録** するための、薄いラッパーです
+**ステートに登録** するためのラッパーです
 
 ## carousel.ts
 
@@ -210,7 +209,7 @@ Carousel 管理用オブジェクト
 ### effect_carouselStart
 `subscription_RAFManager` をベースにした Carousel アニメーションエフェクト  
 このエフェクトは `createRAFCarousel` により作成した `RAFTask` を  
-**ステートに登録** するための、薄いラッパーです
+**ステートに登録** するためのラッパーです
 
 ## その他
 

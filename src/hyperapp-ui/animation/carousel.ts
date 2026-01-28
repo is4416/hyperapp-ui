@@ -10,12 +10,14 @@ import { CSSProperty, createRAFProperties } from "./properties";
  * Carousel 管理用オブジェクト
  * 
  * @type {Object} CarouselState
+ * @property {number} width - 移動量
  * @property {number} index - 先頭のインデックス
  * @property {number} total - 子の数
  */
 export interface CarouselState {
-	index  : number
-	total  : number
+	width: number
+	index: number
+	total: number
 }
 
 // ---------- ---------- ---------- ---------- ----------
@@ -23,63 +25,66 @@ export interface CarouselState {
 // ---------- ---------- ---------- ---------- ----------
 /**
  * subscription_RAFManager をベースにした Carousel アニメーション RAFTask を作成する
+ * props は、基本的に RAFTask の値
  * 
- * @template S
- * @param {Object}   props          - props
- * @param {string}   props.id       - ユニークID (DOM の id と同一)
- * @param {string[]} props.keyNames - RAFTask 配列までのパス
- * @param {number}   props.duration - 実行時間 (ms)
- * @param {number}   props.interval - 待機時間 (ms)
- * @param {(t: number) => number} [props.easing] - easing 関数
- * @param {(state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]} [props.finish] - 終了時イベント
- * @param {{CarouselState, [key: string]: any}} props.extention - CSSProperty / CarouselState 拡張
+ * @param {(t: number) => string} props.easing - easing 関数
+ * @param {CarouselState} props.carouselState  - カルーセル情報
  */
 export const createRAFCarousel = function <S> (
 	props: {
-		id       : string
-		keyNames : string[]
-		duration : number
-		interval : number
-		easing  ?: (t: number) => number
-		finish  ?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
-		extension: {
-			carouselState: CarouselState
-			[key: string]: any
-		}
+		id      : string
+		groupID?: string
+		duration: number
+		delay   : number
+
+		finish?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
+
+		priority ?: number
+		extension?: { [key: string]: any }
+
+		easing ?: (t: number) => number
+		carouselState: CarouselState
 	}
 ): RAFTask<S> {
-	const { id, keyNames, duration, interval, easing = (t: number) => t, finish, extension } = props
+	const { id, groupID, duration, delay, priority, easing = (t: number) => t, carouselState } = props
+	const extension = {
+		...props.extension,
+		carouselState
+	}
 
-	// task
-	const result = createRAFProperties({ id, keyNames, duration, properties: [], finish, extension })
-	result.startTime = performance.now() + interval
-	result.runtime.isDone = true
+	// finish
+	const finish = (state: S, rafTask: RAFTask<S>): S | [S, InternalEffect<S>] => {
+		const dom = document.getElementById(id) as HTMLElement
+		const children = Array.from(dom?.children) as HTMLElement[]
+		if (!children || children.length < 2) return state
 
-	// DOM parent
-	const parent = document.getElementById(id) as HTMLElement
-	if (!parent) return result
+		dom.style.transform = "translateX(0px)"
 
-	// DOM children
-	const children = Array.from(parent.children) as HTMLElement[]
-	if (!children || children.length < 2) return result
+		const firstChild = dom.firstChild
+		if (firstChild) dom.appendChild(firstChild)
 
-	// width
-	const width = children[1].offsetLeft - children[0].offsetLeft
+		return [
+			state,
+			(dispatch: Dispatch<S>) => {
+				const fn = props.finish
+				if (fn) {
+					requestAnimationFrame(() => dispatch((state: S) => fn(state, rafTask)))
+				}
+			}
+		]
+	}
 
-	// set properties
+	// properties
 	const properties: CSSProperty[] = [{
 		[`#${ id }`]: {
-			"transform": (progress: number) => `translateX(${ - easing(progress) * width }px)`
+			"transform": (progress: number) => `translateX(${ - easing(progress) * carouselState.width }px)`
 		}
 	}]
 
-	result.extension = {
-		...result.extension,
-		properties,
-	}
-	result.runtime.isDone = false
-
-	return result
+	return createRAFProperties({
+		id, groupID, duration, delay, finish, priority, extension,
+		properties
+	})
 }
 
 // ---------- ---------- ---------- ---------- ----------
@@ -87,118 +92,89 @@ export const createRAFCarousel = function <S> (
 // ---------- ---------- ---------- ---------- ----------
 /**
  * subscription_RAFManager をベースにした Carousel アニメーションエフェクト
- * 
- * @template S
- * @param {Object}   props          - props
- * @param {string}   props.id       - ユニークID (DOM の id と同一)
- * @param {string[]} props.keyNames - RAFTask 配列までのパス
- * @param {number}   props.duration - 実行時間 (ms)
- * @param {number}   props.interval - 待機時間 (ms)
- * 
- * @param {(t: number) => number} [props.easing] - easing 関数
- * @param {(state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]} [props.onchange]
- *  - 実行時間終了後に呼ばれるイベント
- * 
- * @returns {(dispatch: Dispatch<S>) => void}
  */
 export const effect_carouselStart = function <S> (
 	props: {
-		id       : string
-		keyNames : string[]
-		duration : number
-		interval : number
-		easing  ?: (t: number) => number
-		onchange?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
+		id      : string
+		groupID?: string
+		duration: number
+		delay   : number
+
+		finish?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
+
+		priority ?: number
+		extension?: { [key: string]: any }
+
+		easing ?: (t: number) => number
+
+		keyNames: string[]
 	}
 ): (dispatch: Dispatch<S>) => void {
-	const { id, keyNames, duration, interval, easing = (t: number) => t, onchange } = props
+	const { id, groupID, duration, delay, priority, extension, easing, keyNames } = props
 
 	// finish
 	const finish = (state: S, rafTask: RAFTask<S>): S | [S, InternalEffect<S>] => {
+		// dom
+		const dom = document.getElementById(id) as HTMLElement
+		const children = Array.from(dom?.children) as HTMLElement[]
+		if (!children || children.length < 2) return state
+
+		// width
+		const width = children[1].offsetLeft - children[0].offsetLeft
+
+		// carouselState
+		const carouselState: CarouselState = rafTask.extension?.carouselState
+		if (!carouselState) return state
+
+		// newTask
+		const newTask = createRAFCarousel({
+			id, groupID, duration, delay, finish, priority, extension, easing,
+			carouselState: {
+				index: carouselState.index + 1 < children.length ? carouselState.index + 1 : 0,
+				total: children.length,
+				width: width
+			}
+		})
+
 		return [
 			state,
-			(dispatch: Dispatch<S>): void => {
-				// tasks
+			(dispatch: Dispatch<S>) => {
+				const fn = props.finish
+				if (fn) requestAnimationFrame(() => dispatch((state: S) => fn(state, newTask)))
+
 				const tasks = getValue(state, keyNames, [] as RAFTask<S>[])
-					.filter(task => task.id !== rafTask.id)
-
-				// DOM parent
-				const parent = document.getElementById(rafTask.id) as HTMLElement
-				if (!parent) return
-
-				// DOM children
-				const children = Array.from(parent.children) as HTMLElement[]
-				if (!children || children.length < 2) return
-
-				// set style
-				parent.style.transform = `translateX(0px)`
-
-				// loop
-				const firstChild = children[0]
-				parent.appendChild(firstChild)
-
-				// CarouselState
-				const param: CarouselState = rafTask.extension?.carouselState
-				const carouselState: CarouselState = {
-					index: param.index + 1 < param.total ? param.index + 1 : 0,
-					total: children.length
-				}
-
-				// set extension
-				const extension = {
-					...rafTask.extension,
-					carouselState
-				}
-
-				// newTask
-				const newTask: RAFTask<S> = createRAFCarousel({
-					id, keyNames, duration, interval, easing, finish, extension
-				})
-
-				// onchange
-				if (onchange) {
-					requestAnimationFrame(() => {
-						dispatch((state: S) => onchange(state, newTask))
-					})
-				}
-
-				// next
-				requestAnimationFrame(() => {
-					dispatch((state: S) => setValue(state, keyNames, tasks.concat(newTask)))
-				})
+					.filter(task => task.id !== id)
+					.concat(newTask)
+				requestAnimationFrame(() => dispatch((state: S) => setValue(state, keyNames, tasks)))
 			}
 		]
 	}
 
-	// result
 	return (dispatch: Dispatch<S>) => {
+		// dom
+		const dom = document.getElementById(id) as HTMLElement
+		const children = Array.from(dom?.children) as HTMLElement[]
+		if (!children || children.length < 2) return
+
+		// width
+		const width = children[1].offsetLeft - children[0].offsetLeft
+
+		// newTask
+		const newTask = createRAFCarousel({
+			id, groupID, duration, delay, finish, priority, extension, easing,
+			carouselState: {
+				index: 0,
+				total: children.length,
+				width: width 
+			}
+		})
+
 		dispatch((state: S) => {
-			// DOM parent
-			const parent = document.getElementById(id) as HTMLElement
-			if (!parent) return state
-
-			// DOM children
-			const children = Array.from(parent.children) as HTMLElement[]
-			if (!children || children.length < 2) return state
-
-			// get task
+			// tasks
 			const tasks = getValue(state, keyNames, [] as RAFTask<S>[])
 				.filter(task => task.id !== id)
-
-			// newTask
-			const newTask = createRAFCarousel({
-				id, keyNames, duration, interval, easing, finish,
-				extension: {
-					carouselState: {
-						index: 0,
-						total: children.length
-					}
-				}
-			})
-			// newTask.startTime = performance.now() ← すぐ動かしたいならこう
-
-			// result
-			return setValue(state, keyNames, tasks.concat(newTask))
+				.concat(newTask)
+			return setValue(state, keyNames, tasks)
 		})
 	}
 }

@@ -538,52 +538,59 @@ const effect_throwMessageResume = function(id2) {
 const subscription_RAFManager = function(state, keyNames) {
   return [
     (dispatch, payload) => {
-      if (payload.length === 0) return () => {
+      if (!payload.length) return () => {
       };
       let rafId = 0;
-      const action = (now) => {
+      const loop = (now) => {
         let hasTasks = false;
         dispatch((state2) => {
-          const tasks = [...getValue(state2, keyNames, [])].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
-          const newTasks = tasks.flatMap((task) => {
-            if (task.runtime.paused && !task.runtime.resume) {
-              return [{
-                ...task,
-                currentTime: task.currentTime,
-                deltaTime: 0
-              }];
+          const tasks = [...getValue(state2, keyNames, [])].sort(
+            (a, b) => (b.priority ?? 0) - (a.priority ?? 0)
+          );
+          const newTasks = tasks.map((task) => {
+            if (task.runtime.isDone) return null;
+            if (!task.runtime.startTime) {
+              task.runtime.startTime = now + (task.delay ?? 0);
             }
-            if (task.runtime.isDone) return [];
-            const newTask = {
-              ...task,
-              startTime: task.runtime.resume ? (task.startTime ?? now) + (now - (task.currentTime ?? now)) : task.startTime ?? now,
-              currentTime: now,
-              deltaTime: now - (task.currentTime ?? now)
-            };
-            newTask.runtime.paused = false;
-            newTask.runtime.resume = false;
-            newTask.progress = Math.min(
+            if (task.runtime.paused) {
+              task.runtime.pausedTime = task.runtime.pausedTime ?? now;
+              task.deltaTime = 0;
+              return task;
+            }
+            if (task.runtime.pausedTime !== void 0) {
+              task.runtime.startTime += now - task.runtime.pausedTime;
+              task.runtime.pausedTime = void 0;
+            }
+            const prevTime = task.runtime.currentTime ?? now;
+            task.deltaTime = task.runtime.paused ? 0 : now - prevTime;
+            task.runtime.currentTime = now;
+            const progress = Math.min(
               1,
-              (now - (newTask.startTime ?? now)) / Math.max(1, newTask.duration)
+              (now - task.runtime.startTime) / Math.max(1, task.duration)
             );
-            if (newTask.startTime !== void 0 && now >= newTask.startTime) dispatch((state3) => newTask.action(state3, newTask));
-            if (!newTask.runtime.isDone && newTask.progress >= 1) {
-              newTask.runtime.isDone = true;
-              const finish = newTask.finish;
-              if (finish) dispatch((state3) => finish(state3, newTask));
-              return [];
+            if (now >= task.runtime.startTime) {
+              requestAnimationFrame(() => {
+                dispatch((state3) => task.action(state3, { ...task, progress }));
+              });
             }
-            return [newTask];
-          });
+            if (progress >= 1) {
+              task.runtime.isDone = true;
+              const finish = task.finish;
+              if (finish) {
+                requestAnimationFrame(() => dispatch((state3) => finish(state3, task)));
+              }
+              return null;
+            }
+            return task;
+          }).filter((task) => task !== null);
           hasTasks = newTasks.length > 0;
           return setValue(state2, keyNames, newTasks);
         });
-        if (hasTasks) rafId = requestAnimationFrame(action);
+        if (hasTasks) rafId = requestAnimationFrame(loop);
       };
-      rafId = requestAnimationFrame(action);
+      rafId = requestAnimationFrame(loop);
       return () => cancelAnimationFrame(rafId);
     },
-    // payload
     [...getValue(state, keyNames, [])].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
   ];
 };
@@ -591,10 +598,9 @@ const effect_RAFPause = function(id2, keyNames) {
   return (dispatch) => {
     dispatch((state) => {
       const tasks = getValue(state, keyNames, []);
-      const task = tasks.find((task2) => task2.id === id2);
+      const task = tasks.find((t) => t.id === id2);
       if (!task) return state;
       task.runtime.paused = true;
-      task.runtime.resume = false;
       return setValue(state, keyNames, [...tasks]);
     });
   };
@@ -603,48 +609,62 @@ const effect_RAFResume = function(id2, keyNames) {
   return (dispatch) => {
     dispatch((state) => {
       const tasks = getValue(state, keyNames, []);
-      const task = tasks.find((task2) => task2.id === id2);
+      const task = tasks.find((t) => t.id === id2);
       if (!task) return state;
-      task.runtime.resume = true;
+      task.runtime.paused = false;
       return setValue(state, keyNames, [...tasks]);
     });
   };
 };
+const createUnits = function(properties) {
+  return properties.map((p) => {
+    const selector = Object.keys(p)[0];
+    return {
+      doms: Array.from(document.querySelectorAll(selector)),
+      styles: p[selector]
+    };
+  });
+};
 const createRAFProperties = function(props) {
-  const { id: id2, keyNames, duration, properties, finish, extension } = props;
+  const { id: id2, groupID, duration, delay, priority, extension, properties } = props;
   const action = (state, rafTask) => {
-    const tasks = getValue(state, keyNames, []).filter((task) => task.id !== rafTask.id);
-    const list = rafTask.extension?.properties ?? [];
-    const elements = Array.from(new Set(
-      list.flatMap((p) => {
-        const selector = Object.keys(p)[0];
-        const rules = p[selector];
-        const doms = Array.from(document.querySelectorAll(selector));
-        doms.forEach((dom) => {
-          for (const name in rules) {
-            const fn = rules[name];
-            dom.style.setProperty(name, fn(rafTask.progress ?? 0));
-          }
-        });
-        return doms;
-      })
-    ));
-    if ((rafTask.progress ?? 0) < 1) return state;
-    rafTask.runtime.isDone = true;
-    elements.forEach((dom) => dom.style.willChange = "");
-    const newState = setValue(state, keyNames, tasks);
-    return finish ? finish(newState, rafTask) : newState;
+    const progress = rafTask.progress ?? 0;
+    const units = createUnits(properties);
+    units.forEach((unit) => {
+      for (const [name, fn] of Object.entries(unit.styles)) {
+        unit.doms.forEach((dom) => dom.style.setProperty(name, fn(progress)));
+      }
+    });
+    return state;
+  };
+  const finish = (state, rafTask) => {
+    const units = createUnits(properties);
+    units.forEach((unit) => {
+      unit.doms.forEach((dom) => dom.style.willChange = "");
+    });
+    return [
+      state,
+      (dispatch) => {
+        const fn = props.finish;
+        if (fn) {
+          requestAnimationFrame(
+            () => requestAnimationFrame(
+              () => dispatch((state2) => fn(state2, rafTask))
+            )
+          );
+        }
+      }
+    ];
   };
   return {
     id: id2,
+    groupID,
     duration,
+    delay,
     action,
     finish,
-    runtime: {
-      paused: false,
-      resume: false,
-      isDone: false
-    },
+    runtime: {},
+    priority,
     extension: {
       ...extension,
       properties
@@ -653,22 +673,28 @@ const createRAFProperties = function(props) {
 };
 const GPU_LAYER = /* @__PURE__ */ new Set(["transform", "opacity"]);
 const effect_RAFProperties = function(props) {
-  const { id: id2, keyNames, properties } = props;
+  const { id: id2, groupID, duration, delay, finish, priority, extension, properties, keyNames } = props;
+  const units = createUnits(properties);
+  units.forEach((unit) => {
+    const val = [...new Set(Object.keys(unit.styles))].filter((name) => GPU_LAYER.has(name)).join(",");
+    unit.doms.forEach((dom) => dom.style.willChange = val);
+  });
+  const newTask = createRAFProperties({
+    id: id2,
+    groupID,
+    duration,
+    delay,
+    finish,
+    priority,
+    extension,
+    properties
+  });
   return (dispatch) => {
-    dispatch((state) => {
-      properties.forEach((p) => {
-        const selector = Object.keys(p)[0];
-        const rules = p[selector];
-        const doms = Array.from(document.querySelectorAll(selector));
-        const val = Object.keys(rules).filter((name) => GPU_LAYER.has(name)).join(",");
-        doms.forEach((dom) => dom.style.willChange = val);
+    requestAnimationFrame(() => {
+      dispatch((state) => {
+        const tasks = getValue(state, keyNames, []).filter((task) => task.id !== id2).concat(newTask);
+        return setValue(state, keyNames, tasks);
       });
-      const newTask = createRAFProperties(props);
-      return setValue(
-        state,
-        keyNames,
-        getValue(state, keyNames, []).filter((task) => task.id !== id2).concat(newTask)
-      );
     });
   };
 };
@@ -713,92 +739,101 @@ const progress_easing = {
   }
 };
 const createRAFCarousel = function(props) {
-  const { id: id2, keyNames, duration, interval, easing = (t) => t, finish, extension } = props;
-  const result = createRAFProperties({ id: id2, keyNames, duration, properties: [], finish, extension });
-  result.startTime = performance.now() + interval;
-  result.runtime.isDone = true;
-  const parent = document.getElementById(id2);
-  if (!parent) return result;
-  const children = Array.from(parent.children);
-  if (!children || children.length < 2) return result;
-  const width = children[1].offsetLeft - children[0].offsetLeft;
-  const properties = [{
-    [`#${id2}`]: {
-      "transform": (progress) => `translateX(${-easing(progress) * width}px)`
-    }
-  }];
-  result.extension = {
-    ...result.extension,
-    properties
+  const { id: id2, groupID, duration, delay, priority, easing = (t) => t, carouselState } = props;
+  const extension = {
+    ...props.extension,
+    carouselState
   };
-  result.runtime.isDone = false;
-  return result;
-};
-const effect_carouselStart = function(props) {
-  const { id: id2, keyNames, duration, interval, easing = (t) => t, onchange } = props;
   const finish = (state, rafTask) => {
+    const dom = document.getElementById(id2);
+    const children = Array.from(dom?.children);
+    if (!children || children.length < 2) return state;
+    dom.style.transform = "translateX(0px)";
+    const firstChild = dom.firstChild;
+    if (firstChild) dom.appendChild(firstChild);
     return [
       state,
       (dispatch) => {
-        const tasks = getValue(state, keyNames, []).filter((task) => task.id !== rafTask.id);
-        const parent = document.getElementById(rafTask.id);
-        if (!parent) return;
-        const children = Array.from(parent.children);
-        if (!children || children.length < 2) return;
-        parent.style.transform = `translateX(0px)`;
-        const firstChild = children[0];
-        parent.appendChild(firstChild);
-        const param = rafTask.extension?.carouselState;
-        const carouselState = {
-          index: param.index + 1 < param.total ? param.index + 1 : 0,
-          total: children.length
-        };
-        const extension = {
-          ...rafTask.extension,
-          carouselState
-        };
-        const newTask = createRAFCarousel({
-          id: id2,
-          keyNames,
-          duration,
-          interval,
-          easing,
-          finish,
-          extension
-        });
-        if (onchange) {
-          requestAnimationFrame(() => {
-            dispatch((state2) => onchange(state2, newTask));
-          });
+        const fn = props.finish;
+        if (fn) {
+          requestAnimationFrame(() => dispatch((state2) => fn(state2, rafTask)));
         }
-        requestAnimationFrame(() => {
-          dispatch((state2) => setValue(state2, keyNames, tasks.concat(newTask)));
-        });
+      }
+    ];
+  };
+  const properties = [{
+    [`#${id2}`]: {
+      "transform": (progress) => `translateX(${-easing(progress) * carouselState.width}px)`
+    }
+  }];
+  return createRAFProperties({
+    id: id2,
+    groupID,
+    duration,
+    delay,
+    finish,
+    priority,
+    extension,
+    properties
+  });
+};
+const effect_carouselStart = function(props) {
+  const { id: id2, groupID, duration, delay, priority, extension, easing, keyNames } = props;
+  const finish = (state, rafTask) => {
+    const dom = document.getElementById(id2);
+    const children = Array.from(dom?.children);
+    if (!children || children.length < 2) return state;
+    const width = children[1].offsetLeft - children[0].offsetLeft;
+    const carouselState = rafTask.extension?.carouselState;
+    if (!carouselState) return state;
+    const newTask = createRAFCarousel({
+      id: id2,
+      groupID,
+      duration,
+      delay,
+      finish,
+      priority,
+      extension,
+      easing,
+      carouselState: {
+        index: carouselState.index + 1 < children.length ? carouselState.index + 1 : 0,
+        total: children.length,
+        width
+      }
+    });
+    return [
+      state,
+      (dispatch) => {
+        const fn = props.finish;
+        if (fn) requestAnimationFrame(() => dispatch((state2) => fn(state2, newTask)));
+        const tasks = getValue(state, keyNames, []).filter((task) => task.id !== id2).concat(newTask);
+        requestAnimationFrame(() => dispatch((state2) => setValue(state2, keyNames, tasks)));
       }
     ];
   };
   return (dispatch) => {
+    const dom = document.getElementById(id2);
+    const children = Array.from(dom?.children);
+    if (!children || children.length < 2) return;
+    const width = children[1].offsetLeft - children[0].offsetLeft;
+    const newTask = createRAFCarousel({
+      id: id2,
+      groupID,
+      duration,
+      delay,
+      finish,
+      priority,
+      extension,
+      easing,
+      carouselState: {
+        index: 0,
+        total: children.length,
+        width
+      }
+    });
     dispatch((state) => {
-      const parent = document.getElementById(id2);
-      if (!parent) return state;
-      const children = Array.from(parent.children);
-      if (!children || children.length < 2) return state;
-      const tasks = getValue(state, keyNames, []).filter((task) => task.id !== id2);
-      const newTask = createRAFCarousel({
-        id: id2,
-        keyNames,
-        duration,
-        interval,
-        easing,
-        finish,
-        extension: {
-          carouselState: {
-            index: 0,
-            total: children.length
-          }
-        }
-      });
-      return setValue(state, keyNames, tasks.concat(newTask));
+      const tasks = getValue(state, keyNames, []).filter((task) => task.id !== id2).concat(newTask);
+      return setValue(state, keyNames, tasks);
     });
   };
 };
@@ -996,7 +1031,6 @@ const action_setEasing = (state, e) => {
 const action_setProperties = (state) => {
   const effect = effect_RAFProperties({
     id: "rafP",
-    keyNames: ["subscriptions", "tasks"],
     duration: 1e3,
     properties: [{
       "#rafP": {
@@ -1012,7 +1046,8 @@ const action_setProperties = (state) => {
         dom.style.margin = "0.5rem 0 0.5rem 2rem";
       }, 1e3);
       return state2;
-    }
+    },
+    keyNames: ["subscriptions", "tasks"]
   });
   return [state, effect];
 };
@@ -1032,24 +1067,25 @@ const action_carouselButtonClick = (state) => {
         interval: 1e3,
         easing: progress_easing.easeOutCubic
       });
-      controls.start();
+      setTimeout(() => controls?.start(), 1e3);
       return state2;
     });
   };
-  const action_carousel_onchange = (state2, rafTask) => {
-    const index = rafTask.extension?.carouselState.index;
-    return setValue(state2, ["carousel", "index"], index);
+  const carousel_finish = (state2, rafTask) => {
+    const carouselState = rafTask.extension?.carouselState;
+    if (!carouselState) return state2;
+    return setValue(state2, ["carousel", "index"], carouselState.index);
   };
   return [
     state,
     effect_setMarquee,
     effect_carouselStart({
       id: "carousel",
-      keyNames: ["subscriptions", "tasks"],
       duration: 2e3,
-      interval: 1e3,
+      delay: 1e3,
+      finish: carousel_finish,
       easing: progress_easing.easeOutCubic,
-      onchange: action_carousel_onchange
+      keyNames: ["subscriptions", "tasks"]
     })
   ];
 };

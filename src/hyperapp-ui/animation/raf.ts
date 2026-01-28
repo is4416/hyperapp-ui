@@ -7,11 +7,8 @@ import { getValue, setValue } from "../core/state"
 // type InternalEffect
 // ---------- ---------- ---------- ---------- ----------
 /**
- * Dispatch の内部処理（finish / action）から呼び出されることを前提としたエフェクト
- * Action の戻り値としては返されず、Dispatch の実行フロー内で直接実行される
- *
- * 型としては Effect<S> と同一
- * 「Dispatch 内部専用」という役割と設計意図を明示するための型エイリアス
+ * 戻値としては返されないことを示したエフェクト
+ * Effect の型エイリアス
  */
 export type InternalEffect<S> = Effect<S>
 
@@ -19,211 +16,193 @@ export type InternalEffect<S> = Effect<S>
 // interface RAFRuntime
 // ---------- ---------- ---------- ---------- ----------
 /**
- * 即時反映が必要な mutable 処理を前提としたオブジェクト
+ * rAF : mutable オブジェクト
+ * RAFManager でのみ更新される
  * 
  * @type {Object} RAFRuntime
- * 
- * @property {boolean} paused  - 一時停止フラグ
- * @property {boolean} resume  - 再開フラグ
- * @property {boolean} isDone  - 処理終了フラグ
+ * @property {number}  [startTime]   - アクション開始時間
+ * @property {number}  [currentTime] - 実行時間
+ * @property {number}  [pausedTime]  - 一時停止時間
+ * @property {boolean} [paused]      - 一時停止フラグ
+ * @property {boolean} [isDone]      - 処理終了フラグ
  */
 export interface RAFRuntime {
-	paused: boolean
-	resume: boolean
-	isDone: boolean
+	startTime  ?: number
+	currentTime?: number
+	pausedTime ?: number
+	paused     ?: boolean
+	isDone     ?: boolean
 }
 
 // ---------- ---------- ---------- ---------- ----------
 // interface RAFTask
 // ---------- ---------- ---------- ---------- ----------
 /**
- * requestAnimasionFrame 管理用オブジェクト
+ * rAF を管理するためのオブジェクト
  * 
  * @template S
  * @type {Object} RAFTask
- * 
- * @property {string}  id       - ユニークID
- * @property {number} [groupID] - グループナンバー (任意)
- * @property {number}  duration - 1回あたりの処理時間 (ms)
- * 
- * @property {number} [progress]    - 進捗状況 (0-1)
- * @property {number} [startTime]   - 開始時間
- * @property {number} [currentTime] - 現在時間
- * @property {number} [deltaTime]   - 前回からの実行時間
+ * @property {string} id          - ユニークID
+ * @property {string} [groupID]   - グループナンバー
+ * @property {number} duration    - 1回あたりの処理時間 (ms)
+ * @property {number} [delay]     - 開始までの待機時間 (ms)
+ * @property {number} [progress]  - 進捗状況 (0 - 1)
+ * @property {number} [deltaTime] - 前回からの実行時間
  * 
  * @property {(state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]}  action  - アクション
  * @property {(state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]} [finish] - 終了時アクション
  * 
- * @property {RAFRuntime} runtime - mutable 処理を前提としたオブジェクト
+ * @property {RAFRuntime} runtime   - runtime (mutable)
+ * @property {number}    [priority] - 処理優先順位
  * 
- * @property {number}               [priority]  - 処理優先順位
- * @property {{[key: string]: any}} [extension] - 拡張用オプション
+ * @property {{ [key: string]: any }} [extension] - 拡張用オプション
  */
-export interface RAFTask <S> {
+export interface RAFTask<S> {
 	id      : string
-	groupID?: number
+	groupID?: string
 	duration: number
+	delay  ?: number
 
-	progress   ?: number
-	startTime  ?: number
-	currentTime?: number
-	deltaTime  ?: number
+	progress  ?: number
+	deltaTime ?: number
 
 	action : (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
 	finish?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
 
-	// 即時反映が必要な mutable 処理を前提としたオブジェクト
-	// このプロパティは、ステートにセットする際にクローンしないこと
 	runtime: RAFRuntime
-
 	priority ?: number
-
-	// 拡張用のオブジェクト
-	// Carousel など、タスク固有ロジック用の拡張領域
-	// RAFManager は、extension を一切参照しない
-	extension?: {
-		[key: string]: any
-	}
+	extension?: { [key: string]: any }
 }
 
 // ---------- ---------- ---------- ---------- ----------
 // subscription_RAFManager
 // ---------- ---------- ---------- ---------- ----------
 /**
- * requestAnimationFrame を利用し、RAFTask をフレームごとに実行するサブスクリプション
+ * RAFTask 配列をフレームごとに実行するサブスクリプション
  * 
  * @template S
  * @param   {S}        state    - ステート
  * @param   {string[]} keyNames - RAFTask 配列までのパス
  * @returns {Subscription<S>}
  */
-export const subscription_RAFManager = function <S> (
-	state   : S,
+export const subscription_RAFManager = function <S>(
+	state: S,
 	keyNames: string[]
 ): Subscription<S> {
 	return [
 		(dispatch: Dispatch<S>, payload: RAFTask<S>[]) => {
-			if (payload.length === 0) return () => {}
+			if (!payload.length) return () => {}
 
 			let rafId = 0
 
-			// requestAnimationFrame Callback
-			const action = (now: number) => {
+			const loop = (now: number) => {
 				let hasTasks = false
 
 				dispatch((state: S) => {
+					const tasks = [...getValue(state, keyNames, [] as RAFTask<S>[])].sort(
+						(a, b) => (b.priority ?? 0) - (a.priority ?? 0)
+					)
 
-					// tasks
-					const tasks = [...getValue(state, keyNames, [] as RAFTask<S>[])]
-						.sort((a, b) => ((b.priority ?? 0) - (a.priority ?? 0)))
+					const newTasks: RAFTask<S>[] = tasks.map(task => {
+						// isDone
+						if (task.runtime.isDone) return null
 
-					// newTasks
-					const newTasks: RAFTask<S>[] = tasks.flatMap(task => {
 
-						// pause
-						if (task.runtime.paused && !task.runtime.resume) {
-							return [{
-								...task,
-								currentTime: task.currentTime,
-								deltaTime  : 0
-							}]
+						// init startTime
+						if (!task.runtime.startTime) {
+							task.runtime.startTime = now + (task.delay ?? 0)
 						}
 
-						// done
-						if (task.runtime.isDone) return []
-
-						// update time
-						const newTask: RAFTask<S> = {
-							...task,
-							startTime  : task.runtime.resume
-								? (task.startTime ?? now) + (now - (task.currentTime ?? now))
-								: task.startTime ?? now,
-							currentTime: now,
-							deltaTime  : now - (task.currentTime ?? now),
+						// paused
+						if (task.runtime.paused) {
+							task.runtime.pausedTime = task.runtime.pausedTime ?? now
+							task.deltaTime = 0
+							return task
 						}
 
-						// runtime
-						newTask.runtime.paused = false
-						newTask.runtime.resume = false
+						// resume
+						if (task.runtime.pausedTime !== undefined) {
+							task.runtime.startTime += now - task.runtime.pausedTime
+							task.runtime.pausedTime = undefined
+						}
 
-						// get progress (0 - 1)
-						newTask.progress = Math.min(
+						// deltaTime
+						const prevTime = task.runtime.currentTime ?? now
+						task.deltaTime = task.runtime.paused ? 0 : now - prevTime
+
+						// currentTime
+						task.runtime.currentTime = now
+
+						// progress
+						const progress = Math.min(
 							1,
-							(now - (newTask.startTime ?? now)) /
-							Math.max(1, newTask.duration)
+							(now - task.runtime.startTime)
+							/ Math.max(1, task.duration)
 						)
 
-						// dispatch action
-						if (
-							newTask.startTime !== undefined &&
-							now >= newTask.startTime
-						) dispatch((state: S) => newTask.action(state, newTask))
-
-						// finish
-						if (!newTask.runtime.isDone && newTask.progress >= 1) {
-							newTask.runtime.isDone = true
-
-							const finish = newTask.finish
-							if (finish) dispatch((state: S) => finish(state, newTask))
-
-							return []
+						// action dispatch
+						if (now >= task.runtime.startTime) {
+							requestAnimationFrame(() => {
+								dispatch((state: S) => task.action(state, { ...task, progress }))
+							})
 						}
 
-						// result task
-						return [newTask]
-					})
+						// finish
+						if (progress >= 1) {
+							task.runtime.isDone = true
 
-					// set has
+							const finish = task.finish
+							if (finish) {
+								requestAnimationFrame(() => dispatch((state: S) => finish(state, task)))
+							}
+
+							return null
+						}
+
+						return task
+					}).filter(task => task !== null) as RAFTask<S>[]
+
 					hasTasks = newTasks.length > 0
 
-					// set value
 					return setValue(state, keyNames, newTasks)
+				})
 
-				}) // end dispatch
+				if (hasTasks) rafId = requestAnimationFrame(loop)
+			}
 
-				// set next animation
-				if (hasTasks) rafId = requestAnimationFrame(action)
+			rafId = requestAnimationFrame(loop)
 
-			} // end action
-
-			// start animation
-			rafId = requestAnimationFrame(action)
-
-			// subscription finalize
 			return () => cancelAnimationFrame(rafId)
 		},
 
-		// payload
 		[...getValue(state, keyNames, [] as RAFTask<S>[])]
 			.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
 	]
 }
 
 // ---------- ---------- ---------- ---------- ----------
-// effectRAFPause
+// effect_RAFPause
 // ---------- ---------- ---------- ---------- ----------
 /**
- * rAF アニメーションの一時停止を行うエフェクト
+ * アニメーションの一時停止を行うエフェクト
  * 
- * @template S
- * @param {string}   id       - ユニークID
- * @param {string[]} keyNames - RAFTask 配列までのパス
+ * @param   {string}   id       - ユニークID
+ * @param   {string[]} keyNames - RAFTask 配列までのパス
  * @returns {(dispatch: Dispatch<S>) => void}
  */
-export const effect_RAFPause = function <S> (
+export const effect_RAFPause = function <S>(
 	id      : string,
 	keyNames: string[]
 ): (dispatch: Dispatch<S>) => void {
 	return (dispatch: Dispatch<S>) => {
 		dispatch((state: S) => {
 			const tasks = getValue(state, keyNames, [] as RAFTask<S>[])
-			const task  = tasks.find(task => task.id === id)
+			const task = tasks.find(t => t.id === id)
 			if (!task) return state
 
 			task.runtime.paused = true
-			task.runtime.resume = false
 
-			return setValue(state, keyNames, [ ...tasks ])
+			return setValue(state, keyNames, [...tasks])
 		})
 	}
 }
@@ -232,26 +211,25 @@ export const effect_RAFPause = function <S> (
 // effect_RAFResume
 // ---------- ---------- ---------- ---------- ----------
 /**
- * rAF アニメーションの一時停止からの再開を行うエフェクト
+ * アニメーションの再開を行うためのエフェクト
  * 
- * @template S
- * @param {string}   id       - ユニークID
- * @param {string[]} keyNames - RAFTask 配列までのパス
+ * @param   {string}   id       - ユニークID
+ * @param   {string[]} keyNames - RAFTask 配列までのパス
  * @returns {(dispatch: Dispatch<S>) => void}
  */
-export const effect_RAFResume = function <S> (
+export const effect_RAFResume = function <S>(
 	id      : string,
 	keyNames: string[]
 ): (dispatch: Dispatch<S>) => void {
 	return (dispatch: Dispatch<S>) => {
 		dispatch((state: S) => {
 			const tasks = getValue(state, keyNames, [] as RAFTask<S>[])
-			const task  = tasks.find(task => task.id === id)
+			const task = tasks.find(t => t.id === id)
 			if (!task) return state
 
-			task.runtime.resume = true
+			task.runtime.paused = false
 
-			return setValue(state, keyNames, [ ...tasks ])
+			return setValue(state, keyNames, [...tasks])
 		})
 	}
 }

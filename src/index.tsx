@@ -15,8 +15,11 @@ import {
 	effect_RAFProperties,
 	progress_easing,
 	ScrollMargin, getScrollMargin, marquee,
+	InternalEffect,
 	effect_carouselStart,
-	effect_RAFPause, effect_RAFResume
+	createUnits, effect_RAFPause, effect_RAFResume,
+	CSSProperty, createRAFProperties,
+	CarouselState
 } from "./hyperapp-ui"
 
 // ---------- ---------- ---------- ---------- ----------
@@ -182,7 +185,6 @@ const action_setProperties = (state: State) => {
 
 	const effect = effect_RAFProperties({
 		id        : "rafP",
-		keyNames  : ["subscriptions", "tasks"],
 		duration  : 1000,
 		properties: [{
 			"#rafP": {
@@ -198,7 +200,8 @@ const action_setProperties = (state: State) => {
 				dom.style.margin = "0.5rem 0 0.5rem 2rem"
 			}, 1000)
 			return state
-		}
+		},
+		keyNames  : ["subscriptions", "tasks"],
 	})
 
 	return [state, effect]
@@ -233,16 +236,17 @@ const action_carouselButtonClick = (state: State) => {
 				easing  : progress_easing.easeOutCubic
 			})
 
-			controls.start()
+			setTimeout(() => controls?.start(), 1000)
 
 			return state
 		})
 	}
 
-	// carousel.onchange
-	const action_carousel_onchange = (state: State, rafTask: RAFTask<State>) => {
-		const index = rafTask.extension?.carouselState.index
-		return setValue(state, ["carousel", "index"], index)
+	// carousel_finish
+	const carousel_finish = (state: State, rafTask: RAFTask<State>): State | [State, InternalEffect<State>] => {
+		const carouselState: CarouselState = rafTask.extension?.carouselState
+		if (!carouselState) return state
+		return setValue(state, ["carousel", "index"], carouselState.index)
 	}
 
 	// result
@@ -250,12 +254,12 @@ const action_carouselButtonClick = (state: State) => {
 		state,
 		effect_setMarquee,
 		effect_carouselStart({
-			id      : "carousel",
-			keyNames: ["subscriptions", "tasks"],
+			id: "carousel",
 			duration: 2000,
-			interval: 1000,
-			easing  : progress_easing.easeOutCubic,
-			onchange: action_carousel_onchange
+			delay: 1000,
+			finish: carousel_finish,
+			easing: progress_easing.easeOutCubic,
+			keyNames: ["subscriptions", "tasks"]
 		})
 	]
 }
