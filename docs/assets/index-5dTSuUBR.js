@@ -535,7 +535,27 @@ const effect_throwMessageResume = function(id2) {
     });
   };
 };
+const attachRuntimeGetters = (task) => {
+  const desc = Object.getOwnPropertyDescriptor(task, "progress");
+  if (desc?.get) return;
+  Object.defineProperty(task, "progress", {
+    get() {
+      return task.runtime.progress;
+    },
+    enumerable: true,
+    configurable: true
+  });
+  Object.defineProperty(task, "deltaTime", {
+    get() {
+      return task.runtime.deltaTime;
+    },
+    enumerable: true,
+    configurable: true
+  });
+};
 const subscription_RAFManager = function(state, keyNames) {
+  const tasks = [...getValue(state, keyNames, [])].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+  tasks.forEach((task) => attachRuntimeGetters(task));
   return [
     (dispatch, payload) => {
       if (!payload.length) return () => {
@@ -544,17 +564,15 @@ const subscription_RAFManager = function(state, keyNames) {
       const loop = (now) => {
         let hasTasks = false;
         dispatch((state2) => {
-          const tasks = [...getValue(state2, keyNames, [])].sort(
-            (a, b) => (b.priority ?? 0) - (a.priority ?? 0)
-          );
-          const newTasks = tasks.map((task) => {
+          const tasks2 = [...getValue(state2, keyNames, [])];
+          const newTasks = tasks2.map((task) => {
             if (task.runtime.isDone) return null;
-            if (!task.runtime.startTime) {
+            if (task.runtime.startTime === void 0) {
               task.runtime.startTime = now + (task.delay ?? 0);
             }
             if (task.runtime.paused) {
               task.runtime.pausedTime = task.runtime.pausedTime ?? now;
-              task.deltaTime = 0;
+              task.runtime.deltaTime = 0;
               return task;
             }
             if (task.runtime.pausedTime !== void 0) {
@@ -562,18 +580,18 @@ const subscription_RAFManager = function(state, keyNames) {
               task.runtime.pausedTime = void 0;
             }
             const prevTime = task.runtime.currentTime ?? now;
-            task.deltaTime = task.runtime.paused ? 0 : now - prevTime;
+            task.runtime.deltaTime = task.runtime.paused ? 0 : now - prevTime;
             task.runtime.currentTime = now;
-            const progress = Math.min(
+            task.runtime.progress = Math.min(
               1,
               (now - task.runtime.startTime) / Math.max(1, task.duration)
             );
             if (now >= task.runtime.startTime) {
               requestAnimationFrame(() => {
-                dispatch((state3) => task.action(state3, { ...task, progress }));
+                dispatch((state3) => task.action(state3, task));
               });
             }
-            if (progress >= 1) {
+            if (task.runtime.progress >= 1) {
               task.runtime.isDone = true;
               const finish = task.finish;
               if (finish) {
@@ -591,7 +609,7 @@ const subscription_RAFManager = function(state, keyNames) {
       rafId = requestAnimationFrame(loop);
       return () => cancelAnimationFrame(rafId);
     },
-    [...getValue(state, keyNames, [])].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
+    tasks
   ];
 };
 const effect_RAFPause = function(id2, keyNames) {

@@ -25,6 +25,8 @@ export type InternalEffect<S> = Effect<S>
  * @property {number}  [pausedTime]  - 一時停止時間
  * @property {boolean} [paused]      - 一時停止フラグ
  * @property {boolean} [isDone]      - 処理終了フラグ
+ * @property {number}  [progress]    - 進捗状況 (0 - 1)
+ * @property {number}  [deltaTime]   - 前回からの経過時間
  */
 export interface RAFRuntime {
 	startTime  ?: number
@@ -32,6 +34,9 @@ export interface RAFRuntime {
 	pausedTime ?: number
 	paused     ?: boolean
 	isDone     ?: boolean
+
+	progress ?: number
+	deltaTime?: number
 }
 
 // ---------- ---------- ---------- ---------- ----------
@@ -46,8 +51,8 @@ export interface RAFRuntime {
  * @property {string} [groupID]   - グループナンバー
  * @property {number} duration    - 1回あたりの処理時間 (ms)
  * @property {number} [delay]     - 開始までの待機時間 (ms)
- * @property {number} [progress]  - 進捗状況 (0 - 1)
- * @property {number} [deltaTime] - 前回からの実行時間
+ * @property {number} [progress]  - 進捗状況 (0 - 1)   // readOnly
+ * @property {number} [deltaTime] - 前回からの実行時間 // readOnly
  * 
  * @property {(state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]}  action  - アクション
  * @property {(state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]} [finish] - 終了時アクション
@@ -63,8 +68,8 @@ export interface RAFTask<S> {
 	duration: number
 	delay  ?: number
 
-	progress  ?: number
-	deltaTime ?: number
+	readonly progress ?: number
+	readonly deltaTime?: number
 
 	action : (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
 	finish?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
@@ -72,6 +77,33 @@ export interface RAFTask<S> {
 	runtime: RAFRuntime
 	priority ?: number
 	extension?: { [key: string]: any }
+}
+
+// ---------- ---------- ---------- ---------- ----------
+// attachRuntimeGetters
+// ---------- ---------- ---------- ---------- ----------
+/**
+ * RAFTask にゲッターを追加する
+ */
+const attachRuntimeGetters = <S>(task: RAFTask<S>) => {
+	const desc = Object.getOwnPropertyDescriptor(task, "progress")
+	if (desc?.get) return
+
+	Object.defineProperty(task, "progress", {
+		get() {
+			return task.runtime.progress
+		},
+		enumerable  : true,
+		configurable: true
+	})
+
+	Object.defineProperty(task, "deltaTime", {
+		get() {
+			return task.runtime.deltaTime
+		},
+		enumerable  : true,
+		configurable: true
+	})
 }
 
 // ---------- ---------- ---------- ---------- ----------
@@ -89,6 +121,11 @@ export const subscription_RAFManager = function <S>(
 	state: S,
 	keyNames: string[]
 ): Subscription<S> {
+	const tasks = [...getValue(state, keyNames, [] as RAFTask<S>[])]
+		.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
+
+	tasks.forEach(task => attachRuntimeGetters(task))
+
 	return [
 		(dispatch: Dispatch<S>, payload: RAFTask<S>[]) => {
 			if (!payload.length) return () => {}
@@ -99,24 +136,21 @@ export const subscription_RAFManager = function <S>(
 				let hasTasks = false
 
 				dispatch((state: S) => {
-					const tasks = [...getValue(state, keyNames, [] as RAFTask<S>[])].sort(
-						(a, b) => (b.priority ?? 0) - (a.priority ?? 0)
-					)
+					const tasks = [...getValue(state, keyNames, [] as RAFTask<S>[])]
 
 					const newTasks: RAFTask<S>[] = tasks.map(task => {
 						// isDone
 						if (task.runtime.isDone) return null
 
-
 						// init startTime
-						if (!task.runtime.startTime) {
+						if (task.runtime.startTime === undefined) {
 							task.runtime.startTime = now + (task.delay ?? 0)
 						}
 
 						// paused
 						if (task.runtime.paused) {
 							task.runtime.pausedTime = task.runtime.pausedTime ?? now
-							task.deltaTime = 0
+							task.runtime.deltaTime = 0
 							return task
 						}
 
@@ -128,13 +162,13 @@ export const subscription_RAFManager = function <S>(
 
 						// deltaTime
 						const prevTime = task.runtime.currentTime ?? now
-						task.deltaTime = task.runtime.paused ? 0 : now - prevTime
+						task.runtime.deltaTime = task.runtime.paused ? 0 : now - prevTime
 
 						// currentTime
 						task.runtime.currentTime = now
 
 						// progress
-						const progress = Math.min(
+						task.runtime.progress = Math.min(
 							1,
 							(now - task.runtime.startTime)
 							/ Math.max(1, task.duration)
@@ -143,12 +177,12 @@ export const subscription_RAFManager = function <S>(
 						// action dispatch
 						if (now >= task.runtime.startTime) {
 							requestAnimationFrame(() => {
-								dispatch((state: S) => task.action(state, { ...task, progress }))
+								dispatch((state: S) => task.action(state, task))
 							})
 						}
 
 						// finish
-						if (progress >= 1) {
+						if (task.runtime.progress >= 1) {
 							task.runtime.isDone = true
 
 							const finish = task.finish
@@ -175,8 +209,7 @@ export const subscription_RAFManager = function <S>(
 			return () => cancelAnimationFrame(rafId)
 		},
 
-		[...getValue(state, keyNames, [] as RAFTask<S>[])]
-			.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
+		tasks
 	]
 }
 

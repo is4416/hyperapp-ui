@@ -41,6 +41,7 @@ JSX を使用する場合は `hyperapp-jsx-pragma` を前提としています�
 
 **animation / properties.ts**
 - [CSSProperty](#cssproperty)
+- [createUnits](#createunits)
 - [createRAFProperties](#createrafproperties)
 - [effect_RAFProperties](#effect_rafproperties)
 
@@ -499,6 +500,9 @@ export interface RAFRuntime {
 	pausedTime ?: number
 	paused     ?: boolean
 	isDone     ?: boolean
+
+	progress ?: number
+	deltaTime?: number
 }
 ```
 
@@ -507,6 +511,8 @@ export interface RAFRuntime {
 - pausedTime ?: 一時停止時間
 - paused     ?: 一時停止フラグ
 - isDone     ?: 処理終了フラグ
+- progress   ?: 進捗状況 (0 - 1)
+- deltaTime  ?: 前回からの経過時間
 
 **重要**
 
@@ -531,8 +537,8 @@ export interface RAFTask <S> {
 	duration: number
 	delay  ?: number
 
-	progress  ?: number
-	deltaTime ?: number
+	readonly progress ?: number
+	readonly deltaTime?: number
 
 	action : (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
 	finish?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
@@ -550,8 +556,8 @@ export interface RAFTask <S> {
 - delay  ?: 開始までの待機時間 (ms)
 
 時間情報 (内部管理用)
-- progress ?: 進捗状況 (0 - 1)
-- deltaTime?: 前回からの実行時間
+- progress ?: 進捗状況 (0 - 1)   // readonly
+- deltaTime?: 前回からの実行時間 // readonly
 
 アクション
 - action : アクション
@@ -635,6 +641,25 @@ export interface CSSProperty {
 - selector.[name] => fn
 	- name: CSS プロパティ名
 	- fn(progress): CSS 値を計算する関数
+
+---
+
+### createUnits
+CSSProperty を変換する補助関数  
+selector から、doms を取得してセットにします
+
+```ts
+export const createUnits = function (
+	properties: CSSProperty[]
+): {
+	doms  : HTMLElement[],
+	styles: {
+		[name: string]: (progress: number) => string
+	}
+}[]
+```
+
+- properties: プロパティ配列
 
 ---
 

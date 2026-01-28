@@ -187,6 +187,10 @@ rAF アニメーションの一時停止からの再開を行うエフェクト
 CSS設定オブジェクト  
 `RAFTask.extension.properties` に登録します
 
+### createUnits
+`CSSProperty` の selector から DOM を取得してセットにします  
+`CSSProperty` から拡張した RAFTask を作成するために使用する補助関数です
+
 ### createRAFProperties
 `subscription_RAFManager` をベースにした CSS アニメーション RAFTask を作成する  
 このオブジェクトは **情報管理と描画** を担当します  
@@ -220,3 +224,14 @@ Carousel 管理用オブジェクト
   DOM を監視してメモリリークを防止する目的で作成したサブスクリプションです  
   基本的には **DOM ではなくステートを追跡して制御する設計** が望ましいと考えています  
   そのため、`subscription_nodesCleanup` の出番はあまり多くないでしょう
+
+## 最後に
+
+この animation-system は、`RAFRuntime` `RAFTask` `subscription_RAFManager`  
+のみで、基本的にはどのようなアニメーションでも実装できるよう作成しています
+
+その他に作成したエフェクト類は、これをベースに汎用性があるよう作成しているものです  
+そのため、同じDOMの検索が複数回発生しているなど **速度的に最速ではありません**
+
+ライブラリの理解が進んだユーザーは、エフェクト類はコードの参考例として頂き  
+`RAFTask` の `action` や `finish` 等を直接作成されるとよろしいでしょう

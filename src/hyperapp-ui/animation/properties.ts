@@ -29,10 +29,10 @@ export interface CSSProperty {
  * @param   {CSSProperty[]} properties - プロパティ配列
  * @returns {doms: HTMLElement[], styles:{ [name: string]: (progress: number) => string}}
  */
-const createUnits = function (
+export const createUnits = function (
 	properties: CSSProperty[]
 ): {
-	doms: HTMLElement[],
+	doms  : HTMLElement[],
 	styles: {
 		[name: string]: (progress: number) => string
 	}
