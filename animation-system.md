@@ -175,12 +175,6 @@ Dispatch の中から呼ばれるイベントの戻り値として設定され�
 `requestAnimationFrame` を利用し `RAFTask` をフレームごとに実行するサブスクリプション  
 このサブスクリプションは **時間管理** を担当します
 
-### effect_RAFPause
-rAF アニメーションの一時停止を行うエフェクト
-
-### effect_RAFResume
-rAF アニメーションの一時停止からの再開を行うエフェクト
- 
 ## properties.ts
 
 ### CSSProperty

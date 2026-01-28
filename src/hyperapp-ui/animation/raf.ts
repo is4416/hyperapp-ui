@@ -51,8 +51,10 @@ export interface RAFRuntime {
  * @property {string} [groupID]   - グループナンバー
  * @property {number} duration    - 1回あたりの処理時間 (ms)
  * @property {number} [delay]     - 開始までの待機時間 (ms)
- * @property {number} [progress]  - 進捗状況 (0 - 1)   // readOnly
- * @property {number} [deltaTime] - 前回からの実行時間 // readOnly
+
+ * @property {number}  [progress]  - 進捗状況 (0 - 1)   // readOnly
+ * @property {number}  [deltaTime] - 前回からの実行時間 // readOnly
+ * @property {boolean} [paused]    - 一時停止フラフ     // runtime.paused の公開用プロパティ
  * 
  * @property {(state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]}  action  - アクション
  * @property {(state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]} [finish] - 終了時アクション
@@ -68,27 +70,36 @@ export interface RAFTask<S> {
 	duration: number
 	delay  ?: number
 
+	// runtime accessors
 	readonly progress ?: number
 	readonly deltaTime?: number
+	paused?: boolean
 
+	// event
 	action : (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
 	finish?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
 
+	// mutable
 	runtime: RAFRuntime
+
+	// extension
 	priority ?: number
 	extension?: { [key: string]: any }
 }
 
 // ---------- ---------- ---------- ---------- ----------
-// attachRuntimeGetters
+// attachRuntimeAccessors
 // ---------- ---------- ---------- ---------- ----------
 /**
- * RAFTask にゲッターを追加する
+ * RAFTask に runtime のプロパティアクセスを追加
+ * - progress / deltaTime は参照専用
+ * - paused は読み書き可能で runtime と同期
  */
-const attachRuntimeGetters = <S>(task: RAFTask<S>) => {
+const attachRuntimeAccessors = <S>(task: RAFTask<S>) => {
 	const desc = Object.getOwnPropertyDescriptor(task, "progress")
 	if (desc?.get) return
 
+	// progress / deltaTime は参照専用
 	Object.defineProperty(task, "progress", {
 		get() {
 			return task.runtime.progress
@@ -100,6 +111,18 @@ const attachRuntimeGetters = <S>(task: RAFTask<S>) => {
 	Object.defineProperty(task, "deltaTime", {
 		get() {
 			return task.runtime.deltaTime
+		},
+		enumerable  : true,
+		configurable: true
+	})
+
+	// paused は読み書き可能にして runtime と同期
+	Object.defineProperty(task, "paused", {
+		get() {
+			return !!task.runtime.paused
+		},
+		set(val: boolean) {
+			task.runtime.paused = val
 		},
 		enumerable  : true,
 		configurable: true
@@ -121,24 +144,33 @@ export const subscription_RAFManager = function <S>(
 	state: S,
 	keyNames: string[]
 ): Subscription<S> {
+
+	// get tasks
 	const tasks = [...getValue(state, keyNames, [] as RAFTask<S>[])]
 		.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
 
-	tasks.forEach(task => attachRuntimeGetters(task))
+	// progress, deltaTime, paused を task に追加
+	tasks.forEach(task => attachRuntimeAccessors(task))
 
+	// result
 	return [
 		(dispatch: Dispatch<S>, payload: RAFTask<S>[]) => {
 			if (!payload.length) return () => {}
 
+			// rAF ID
 			let rafId = 0
 
+			// rAF callback
 			const loop = (now: number) => {
 				let hasTasks = false
 
 				dispatch((state: S) => {
+					// tasks
 					const tasks = [...getValue(state, keyNames, [] as RAFTask<S>[])]
 
+					// newTasks
 					const newTasks: RAFTask<S>[] = tasks.map(task => {
+
 						// isDone
 						if (task.runtime.isDone) return null
 
@@ -211,58 +243,4 @@ export const subscription_RAFManager = function <S>(
 
 		tasks
 	]
-}
-
-// ---------- ---------- ---------- ---------- ----------
-// effect_RAFPause
-// ---------- ---------- ---------- ---------- ----------
-/**
- * アニメーションの一時停止を行うエフェクト
- * 
- * @param   {string}   id       - ユニークID
- * @param   {string[]} keyNames - RAFTask 配列までのパス
- * @returns {(dispatch: Dispatch<S>) => void}
- */
-export const effect_RAFPause = function <S>(
-	id      : string,
-	keyNames: string[]
-): (dispatch: Dispatch<S>) => void {
-	return (dispatch: Dispatch<S>) => {
-		dispatch((state: S) => {
-			const tasks = getValue(state, keyNames, [] as RAFTask<S>[])
-			const task = tasks.find(t => t.id === id)
-			if (!task) return state
-
-			task.runtime.paused = true
-
-			return setValue(state, keyNames, [...tasks])
-		})
-	}
-}
-
-// ---------- ---------- ---------- ---------- ----------
-// effect_RAFResume
-// ---------- ---------- ---------- ---------- ----------
-/**
- * アニメーションの再開を行うためのエフェクト
- * 
- * @param   {string}   id       - ユニークID
- * @param   {string[]} keyNames - RAFTask 配列までのパス
- * @returns {(dispatch: Dispatch<S>) => void}
- */
-export const effect_RAFResume = function <S>(
-	id      : string,
-	keyNames: string[]
-): (dispatch: Dispatch<S>) => void {
-	return (dispatch: Dispatch<S>) => {
-		dispatch((state: S) => {
-			const tasks = getValue(state, keyNames, [] as RAFTask<S>[])
-			const task = tasks.find(t => t.id === id)
-			if (!task) return state
-
-			task.runtime.paused = false
-
-			return setValue(state, keyNames, [...tasks])
-		})
-	}
 }

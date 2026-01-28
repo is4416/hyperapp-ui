@@ -5,21 +5,23 @@
 import { app, VNode, Dispatch } from "hyperapp"
 import h from "hyperapp-jsx-pragma"
 import {
-	getValue, setValue,
+	setValue,
 	Route, SelectButton, OptionButton,
-	effect_nodesInitialize,
-	effect_setTimedValue,
+
+	effect_nodesInitialize, effect_setTimedValue, subscription_nodesCleanup,
+
 	effect_throwMessageStart, effect_throwMessagePause, effect_throwMessageResume,
-	RAFTask, subscription_RAFManager,
-	subscription_nodesCleanup, subscription_nodesLifecycleByIds,
-	effect_RAFProperties,
+
+	InternalEffect, RAFTask, subscription_RAFManager, 
 	progress_easing,
-	ScrollMargin, getScrollMargin, marquee,
-	InternalEffect,
-	effect_carouselStart,
-	createUnits, effect_RAFPause, effect_RAFResume,
-	CSSProperty, createRAFProperties,
-	CarouselState
+
+	effect_RAFProperties,
+	
+	CarouselState, effect_carouselStart,
+
+	ScrollMargin, getScrollMargin,
+	marquee,
+	getValue,
 } from "./hyperapp-ui"
 
 // ---------- ---------- ---------- ---------- ----------
@@ -269,7 +271,10 @@ const action_carouselButtonClick = (state: State) => {
 // ---------- ---------- ---------- ---------- ----------
 
 const action_carouselPause = (state: State) => {
-	return [state, effect_RAFPause("carousel", ["subscriptions", "tasks"])]
+	const task = getValue(state, ["subscriptions", "tasks"], [] as RAFTask<State>[])
+		.find(task => task.id === "carousel")
+	if (task) task.paused = true
+	return state
 }
 
 // ---------- ---------- ---------- ---------- ----------
@@ -277,7 +282,10 @@ const action_carouselPause = (state: State) => {
 // ---------- ---------- ---------- ---------- ----------
 
 const action_carouselResume = (state: State) => {
-	return [state, effect_RAFResume("carousel", ["subscriptions", "tasks"])]
+	const task = getValue(state, ["subscriptions", "tasks"], [] as RAFTask<State>[])
+		.find(task => task.id === "carousel")
+	if (task) task.paused = false
+	return state
 }
 
 // ---------- ---------- ---------- ---------- ----------

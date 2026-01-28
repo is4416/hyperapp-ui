@@ -36,8 +36,6 @@ JSX を使用する場合は `hyperapp-jsx-pragma` を前提としています�
 - [RAFRuntime](#rafruntime)
 - [RAFTask](#raftask)
 - [subscription_RAFManager](#subscription_rafmanager)
-- [effect_RAFPause](#effect_rafpause)
-- [effect_RAFResume](#effect_rafresume)
 
 **animation / properties.ts**
 - [CSSProperty](#cssproperty)
@@ -114,8 +112,6 @@ requestAnimationFrame を利用した処理
 - `RAFTask`                 : rAF タスク定義オブジェクト
 - `subscription_RAFManager` : RAFTask をフレームごとに実行させるサブスクリプション  
   タスクの並び替え・進捗管理・終了判定を一括で行う
-- `effect_RAFPause` / `effect_RAFResume` : rAF アニメーションの一時停止 / 再開を行うエフェクト  
-  `RAFTask` を直接操作し、即時に反映される
 
 ---
 
@@ -124,6 +120,7 @@ requestAnimationFrame を利用した処理
 rAF を利用した CSS設定
 
 - `CSSProperty`          : CSS 設定用オブジェクト
+- `createUnits`          : CSSProperty[] から doms と styles のセットに変換
 - `createRAFProperties`  : CSS アニメーション RAFTask を作成する
 - `effect_RAFProperties` : rAF をベースにした、CSSアニメーションエフェクト
 
@@ -537,13 +534,19 @@ export interface RAFTask <S> {
 	duration: number
 	delay  ?: number
 
+	// runtime accessors
 	readonly progress ?: number
 	readonly deltaTime?: number
+	paused?: boolean
 
+	// event
 	action : (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
 	finish?: (state: S, rafTask: RAFTask<S>) => S | [S, InternalEffect<S>]
 
+	// mutable
 	runtime: RAFRuntime
+
+	// extension
 	priority ?: number
 	extension?: { [key: string]: any }
 }
@@ -558,6 +561,7 @@ export interface RAFTask <S> {
 時間情報 (内部管理用)
 - progress ?: 進捗状況 (0 - 1)   // readonly
 - deltaTime?: 前回からの実行時間 // readonly
+- paused   ?: 一時停止フラグ     // runtime.paused の公開用プロパティ
 
 アクション
 - action : アクション
@@ -593,36 +597,6 @@ export const subscription_RAFManager = function <S> (
 - keyNames: RAFTask 配列までのパス
 
 [詳細説明](animation-system.md)
-
----
-
-### effect_RAFPause
-rAF アニメーションの一時停止を行うエフェクト
-
-```ts
-export const effect_RAFPause = function <S> (
-	id      : string,
-	keyNames: string[]
-): (dispatch: Dispatch<S>) => void
-```
-
-- id      : ユニークID
-- keyNames: RAFTask 配列までのパス
-
----
-
-### effect_RAFResume
-rAF アニメーションの一時停止からの再開を行うエフェクト
-
-```ts
-export const effect_RAFResume = function <S> (
-	id      : string,
-	keyNames: string[]
-): (dispatch: Dispatch<S>) => void
-```
-
-- id      : ユニークID
-- keyNames: RAFTask 配列までのパス
 
 ---
 

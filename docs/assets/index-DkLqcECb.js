@@ -535,7 +535,7 @@ const effect_throwMessageResume = function(id2) {
     });
   };
 };
-const attachRuntimeGetters = (task) => {
+const attachRuntimeAccessors = (task) => {
   const desc = Object.getOwnPropertyDescriptor(task, "progress");
   if (desc?.get) return;
   Object.defineProperty(task, "progress", {
@@ -552,10 +552,20 @@ const attachRuntimeGetters = (task) => {
     enumerable: true,
     configurable: true
   });
+  Object.defineProperty(task, "paused", {
+    get() {
+      return !!task.runtime.paused;
+    },
+    set(val) {
+      task.runtime.paused = val;
+    },
+    enumerable: true,
+    configurable: true
+  });
 };
 const subscription_RAFManager = function(state, keyNames) {
   const tasks = [...getValue(state, keyNames, [])].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
-  tasks.forEach((task) => attachRuntimeGetters(task));
+  tasks.forEach((task) => attachRuntimeAccessors(task));
   return [
     (dispatch, payload) => {
       if (!payload.length) return () => {
@@ -611,28 +621,6 @@ const subscription_RAFManager = function(state, keyNames) {
     },
     tasks
   ];
-};
-const effect_RAFPause = function(id2, keyNames) {
-  return (dispatch) => {
-    dispatch((state) => {
-      const tasks = getValue(state, keyNames, []);
-      const task = tasks.find((t) => t.id === id2);
-      if (!task) return state;
-      task.runtime.paused = true;
-      return setValue(state, keyNames, [...tasks]);
-    });
-  };
-};
-const effect_RAFResume = function(id2, keyNames) {
-  return (dispatch) => {
-    dispatch((state) => {
-      const tasks = getValue(state, keyNames, []);
-      const task = tasks.find((t) => t.id === id2);
-      if (!task) return state;
-      task.runtime.paused = false;
-      return setValue(state, keyNames, [...tasks]);
-    });
-  };
 };
 const createUnits = function(properties) {
   return properties.map((p) => {
@@ -1108,10 +1096,14 @@ const action_carouselButtonClick = (state) => {
   ];
 };
 const action_carouselPause = (state) => {
-  return [state, effect_RAFPause("carousel", ["subscriptions", "tasks"])];
+  const task = getValue(state, ["subscriptions", "tasks"], []).find((task2) => task2.id === "carousel");
+  if (task) task.paused = true;
+  return state;
 };
 const action_carouselResume = (state) => {
-  return [state, effect_RAFResume("carousel", ["subscriptions", "tasks"])];
+  const task = getValue(state, ["subscriptions", "tasks"], []).find((task2) => task2.id === "carousel");
+  if (task) task.paused = false;
+  return state;
 };
 addEventListener("load", () => {
   const easingList = (() => {
